@@ -1,0 +1,184 @@
+version: "2.1"
+services:
+  vttablet300:
+    image: vitess/base
+    ports:
+      - "15107:$WEB_PORT"
+      - "$GRPC_PORT"
+      - "3306"
+    volumes:
+      - ".:/script"
+      - "./backups:/vt/vtdataroot/backups"
+    environment:
+      - TOPOLOGY_FLAGS
+      - WEB_PORT
+      - GRPC_PORT
+      - CELL
+      - KEYSPACE
+      - DB
+      - EXTERNAL_DB
+      - DB_USER
+      - DB_PASS
+      - DB_CHARSET
+      - ROLE=master
+      - SHARD=-80
+    command: ["sh", "-c", "/script/vttablet-up.sh 300"]
+    healthcheck:
+      test: ["CMD-SHELL","curl localhost:$$WEB_PORT/debug/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+
+  vttablet301:
+    image: vitess/base
+    ports:
+      - "15108:$WEB_PORT"
+      - "$GRPC_PORT"
+      - "3306"
+    volumes:
+      - ".:/script"
+      - "./backups:/vt/vtdataroot/backups"
+    environment:
+      - TOPOLOGY_FLAGS
+      - WEB_PORT
+      - GRPC_PORT
+      - CELL
+      - KEYSPACE
+      - DB
+      - EXTERNAL_DB
+      - DB_PORT
+      - DB_HOST
+      - DB_USER
+      - DB_PASS
+      - DB_CHARSET
+      - SHARD=-80
+    command: ["sh", "-c", "/script/vttablet-up.sh 301"]
+    depends_on:
+      - vttablet300
+    healthcheck:
+      test: ["CMD-SHELL","curl localhost:$$WEB_PORT/debug/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+
+  vttablet302:
+    image: vitess/base
+    ports:
+      - "15109:$WEB_PORT"
+      - "$GRPC_PORT"
+      - "3306"
+    volumes:
+      - ".:/script"
+      - "./backups:/vt/vtdataroot/backups"
+    environment:
+      - TOPOLOGY_FLAGS
+      - WEB_PORT
+      - GRPC_PORT
+      - CELL
+      - KEYSPACE
+      - DB
+      - EXTERNAL_DB
+      - DB_USER
+      - DB_PASS
+      - DB_CHARSET
+      - SHARD=-80
+    command: ["sh", "-c", "/script/vttablet-up.sh 302"]
+    depends_on:
+      - vttablet300
+    healthcheck:
+      test: ["CMD-SHELL","curl localhost:$$WEB_PORT/debug/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+
+
+  vttablet400:
+    image: vitess/base
+    ports:
+      - "15110:$WEB_PORT"
+      - "$GRPC_PORT"
+      - "3306"
+    volumes:
+      - ".:/script"
+      - "./backups:/vt/vtdataroot/backups"
+    environment:
+      - TOPOLOGY_FLAGS
+      - WEB_PORT
+      - GRPC_PORT
+      - CELL
+      - KEYSPACE
+      - DB
+      - EXTERNAL_DB
+      - DB_USER
+      - DB_PASS
+      - DB_CHARSET
+      - ROLE=master
+      - SHARD=80-
+    command: ["sh", "-c", "/script/vttablet-up.sh 400"]
+    healthcheck:
+      test: ["CMD-SHELL","curl localhost:$$WEB_PORT/debug/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+
+  vttablet401:
+    image: vitess/base
+    ports:
+      - "15111:$WEB_PORT"
+      - "$GRPC_PORT"
+      - "3306"
+    volumes:
+      - ".:/script"
+      - "./backups:/vt/vtdataroot/backups"
+    environment:
+      - TOPOLOGY_FLAGS
+      - WEB_PORT
+      - GRPC_PORT
+      - CELL
+      - KEYSPACE
+      - DB
+      - EXTERNAL_DB
+      - DB_PORT
+      - DB_HOST
+      - DB_USER
+      - DB_PASS
+      - DB_CHARSET
+      - SHARD=80-
+    command: ["sh", "-c", "/script/vttablet-up.sh 401"]
+    depends_on:
+      - vttablet400
+    healthcheck:
+      test: ["CMD-SHELL","curl localhost:$$WEB_PORT/debug/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15
+
+  vttablet402:
+    image: vitess/base
+    ports:
+      - "15112:$WEB_PORT"
+      - "$GRPC_PORT"
+      - "3306"
+    volumes:
+      - ".:/script"
+      - "./backups:/vt/vtdataroot/backups"
+    environment:
+      - TOPOLOGY_FLAGS
+      - WEB_PORT
+      - GRPC_PORT
+      - CELL
+      - KEYSPACE
+      - DB
+      - EXTERNAL_DB
+      - DB_USER
+      - DB_PASS
+      - DB_CHARSET
+      - SHARD=80-
+    command: ["sh", "-c", "/script/vttablet-up.sh 402"]
+    depends_on:
+      - vttablet400
+    healthcheck:
+      test: ["CMD-SHELL","curl localhost:$$WEB_PORT/debug/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 15

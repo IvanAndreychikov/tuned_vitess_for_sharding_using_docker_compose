@@ -14,12 +14,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Enable tty for Windows users using git-bash or cygwin
-if [[ "$OSTYPE" == "msys" ]]; then
-        # Lightweight shell and GNU utilities compiled for Windows (part of MinGW)
-        tty=winpty
-        script=//script//fix_replication.sh
+# This is an example script that creates a single shard vttablet deployment.
+
+source ./env.sh
+
+cell=${CELL:-'test'}
+uid=$TABLET_UID
+mysql_port=$[17000 + $uid]
+printf -v alias '%s-%010d' $cell $uid
+printf -v tablet_dir 'vt_%010d' $uid
+
+mkdir -p $VTDATAROOT/backups
+
+echo "Starting MySQL for tablet $alias..."
+action="init"
+
+if [ -d $VTDATAROOT/$tablet_dir ]; then
+ echo "Resuming from existing vttablet dir:"
+ echo "    $VTDATAROOT/$tablet_dir"
+ action='start'
 fi
 
-# This is a convenience script to fix replication on replicas.
-exec $tty docker-compose exec ${CS:-vttablet2} ${script:-/script/fix_replication.sh} "$@"
+# mysqlctl \
+$VTROOT/bin/mysqlctl \
+ -log_dir $VTDATAROOT/tmp \
+ -tablet_uid $uid \
+ -mysql_port $mysql_port \
+ $action
