@@ -38,7 +38,7 @@ import (
 )
 
 var (
-	master           *cluster.Vttablet
+	main           *cluster.Vttablet
 	replica1         *cluster.Vttablet
 	replica2         *cluster.Vttablet
 	replica3         *cluster.Vttablet
@@ -112,7 +112,7 @@ func TestMainImpl(m *testing.M) {
 		for i := 0; i < 4; i++ {
 			tabletType := "replica"
 			if i == 0 {
-				tabletType = "master"
+				tabletType = "main"
 			}
 			tablet := localCluster.GetVttabletInstance(tabletType, 0, cell)
 			tablet.VttabletProcess = localCluster.GetVtprocessInstanceFromVttablet(tablet, shard.Name, keyspaceName)
@@ -140,19 +140,19 @@ func TestMainImpl(m *testing.M) {
 				return 1, err
 			}
 		}
-		master = shard.Vttablets[0]
+		main = shard.Vttablets[0]
 		replica1 = shard.Vttablets[1]
 		replica2 = shard.Vttablets[2]
 		replica3 = shard.Vttablets[3]
 
-		if err := localCluster.VtctlclientProcess.InitTablet(master, cell, keyspaceName, hostname, shard.Name); err != nil {
+		if err := localCluster.VtctlclientProcess.InitTablet(main, cell, keyspaceName, hostname, shard.Name); err != nil {
 			return 1, err
 		}
 		if err := localCluster.VtctlclientProcess.InitTablet(replica1, cell, keyspaceName, hostname, shard.Name); err != nil {
 			return 1, err
 		}
 
-		for _, tablet := range []cluster.Vttablet{*master, *replica1} {
+		for _, tablet := range []cluster.Vttablet{*main, *replica1} {
 			if err := tablet.VttabletProcess.CreateDB(keyspaceName); err != nil {
 				return 1, err
 			}
@@ -161,7 +161,7 @@ func TestMainImpl(m *testing.M) {
 			}
 		}
 
-		if err := localCluster.VtctlclientProcess.InitShardMaster(keyspaceName, shard.Name, cell, master.TabletUID); err != nil {
+		if err := localCluster.VtctlclientProcess.InitShardMain(keyspaceName, shard.Name, cell, main.TabletUID); err != nil {
 			return 1, err
 		}
 		return m.Run(), nil
@@ -177,11 +177,11 @@ func TestMainImpl(m *testing.M) {
 }
 
 // TestRecoveryImpl does following
-// - create a shard with master and replica1 only
-// - run InitShardMaster
+// - create a shard with main and replica1 only
+// - run InitShardMain
 // - insert some data
 // - take a backup
-// - insert more data on the master
+// - insert more data on the main
 // - take another backup
 // - create a recovery keyspace after first backup
 // - bring up tablet_replica2 in the new keyspace
@@ -202,7 +202,7 @@ func TestRecoveryImpl(t *testing.T) {
 	require.Equal(t, len(backups), 1)
 	assert.Contains(t, backups[0], replica1.Alias)
 
-	_, err = master.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test2')", keyspaceName, true)
+	_, err = main.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test2')", keyspaceName, true)
 	assert.Nil(t, err)
 	cluster.VerifyRowsInTablet(t, replica1, keyspaceName, 2)
 
@@ -231,12 +231,12 @@ func TestRecoveryImpl(t *testing.T) {
 
 	cluster.VerifyLocalMetadata(t, replica2, recoveryKS1, shardName, cell)
 
-	// update the original row in master
-	_, err = master.VttabletProcess.QueryTablet("update vt_insert_test set msg = 'msgx1' where id = 1", keyspaceName, true)
+	// update the original row in main
+	_, err = main.VttabletProcess.QueryTablet("update vt_insert_test set msg = 'msgx1' where id = 1", keyspaceName, true)
 	assert.Nil(t, err)
 
-	//verify that master has new value
-	qr, err := master.VttabletProcess.QueryTablet("select msg from vt_insert_test where id = 1", keyspaceName, true)
+	//verify that main has new value
+	qr, err := main.VttabletProcess.QueryTablet("select msg from vt_insert_test where id = 1", keyspaceName, true)
 	assert.Nil(t, err)
 	assert.Equal(t, "msgx1", fmt.Sprintf("%s", qr.Rows[0][0].ToBytes()))
 
@@ -248,7 +248,7 @@ func TestRecoveryImpl(t *testing.T) {
 	err = localCluster.VtctlclientProcess.ExecuteCommand("Backup", replica1.Alias)
 	assert.Nil(t, err)
 
-	_, err = master.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test3')", keyspaceName, true)
+	_, err = main.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test3')", keyspaceName, true)
 	assert.Nil(t, err)
 	cluster.VerifyRowsInTablet(t, replica1, keyspaceName, 3)
 
@@ -260,12 +260,12 @@ func TestRecoveryImpl(t *testing.T) {
 
 	cluster.VerifyRowsInTablet(t, replica3, keyspaceName, 2)
 
-	// update the original row in master
-	_, err = master.VttabletProcess.QueryTablet("update vt_insert_test set msg = 'msgx2' where id = 1", keyspaceName, true)
+	// update the original row in main
+	_, err = main.VttabletProcess.QueryTablet("update vt_insert_test set msg = 'msgx2' where id = 1", keyspaceName, true)
 	assert.Nil(t, err)
 
-	//verify that master has new value
-	qr, err = master.VttabletProcess.QueryTablet("select msg from vt_insert_test where id = 1", keyspaceName, true)
+	//verify that main has new value
+	qr, err = main.VttabletProcess.QueryTablet("select msg from vt_insert_test where id = 1", keyspaceName, true)
 	assert.Nil(t, err)
 	assert.Equal(t, "msgx2", fmt.Sprintf("%s", qr.Rows[0][0].ToBytes()))
 
@@ -280,7 +280,7 @@ func TestRecoveryImpl(t *testing.T) {
 	localCluster.VtgateGrpcPort = vtgateInstance.GrpcPort
 	assert.Nil(t, err)
 	defer vtgateInstance.TearDown()
-	err = vtgateInstance.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", keyspaceName, shardName), 1)
+	err = vtgateInstance.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", keyspaceName, shardName), 1)
 	assert.Nil(t, err)
 	err = vtgateInstance.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.replica", keyspaceName, shardName), 1)
 	assert.Nil(t, err)
@@ -319,11 +319,11 @@ func TestRecoveryImpl(t *testing.T) {
 	recovery.VerifyQueriesUsingVtgate(t, session, "select count(*) from vt_insert_test", "INT64(2)")
 }
 
-// verifyInitialReplication will create schema in master, insert some data to master and verify the same data in replica.
+// verifyInitialReplication will create schema in main, insert some data to main and verify the same data in replica.
 func verifyInitialReplication(t *testing.T) {
-	_, err := master.VttabletProcess.QueryTablet(vtInsertTest, keyspaceName, true)
+	_, err := main.VttabletProcess.QueryTablet(vtInsertTest, keyspaceName, true)
 	assert.Nil(t, err)
-	_, err = master.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test1')", keyspaceName, true)
+	_, err = main.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test1')", keyspaceName, true)
 	assert.Nil(t, err)
 	cluster.VerifyRowsInTablet(t, replica1, keyspaceName, 1)
 }
@@ -336,7 +336,7 @@ func listBackups(t *testing.T) []string {
 
 func tabletsTeardown() {
 	var mysqlProcs []*exec.Cmd
-	for _, tablet := range []*cluster.Vttablet{master, replica1, replica2, replica3} {
+	for _, tablet := range []*cluster.Vttablet{main, replica1, replica2, replica3} {
 		proc, _ := tablet.MysqlctlProcess.StopProcess()
 		mysqlProcs = append(mysqlProcs, proc)
 		tablet.VttabletProcess.TearDown()

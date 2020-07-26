@@ -119,7 +119,7 @@ func TestDiscoveryGatewayGetTablets(t *testing.T) {
 		t.Errorf("want %+v, got %+v", ep1, tsl)
 	}
 
-	// master should use the one with newer timestamp regardless of cell
+	// main should use the one with newer timestamp regardless of cell
 	hc.Reset()
 	dg.tsc.ResetForTesting()
 	hc.AddTestTablet("remote", "1.1.1.1", 1001, keyspace, shard, topodatapb.TabletType_MASTER, true, 5, nil)
@@ -137,7 +137,7 @@ func TestShuffleTablets(t *testing.T) {
 		Target:  &querypb.Target{Keyspace: "k", Shard: "s", TabletType: topodatapb.TabletType_REPLICA},
 		Up:      true,
 		Serving: true,
-		Stats:   &querypb.RealtimeStats{SecondsBehindMaster: 1, CpuUsage: 0.2},
+		Stats:   &querypb.RealtimeStats{SecondsBehindMain: 1, CpuUsage: 0.2},
 	}
 
 	ts2 := discovery.TabletStats{
@@ -146,7 +146,7 @@ func TestShuffleTablets(t *testing.T) {
 		Target:  &querypb.Target{Keyspace: "k", Shard: "s", TabletType: topodatapb.TabletType_REPLICA},
 		Up:      true,
 		Serving: true,
-		Stats:   &querypb.RealtimeStats{SecondsBehindMaster: 1, CpuUsage: 0.2},
+		Stats:   &querypb.RealtimeStats{SecondsBehindMain: 1, CpuUsage: 0.2},
 	}
 
 	ts3 := discovery.TabletStats{
@@ -155,7 +155,7 @@ func TestShuffleTablets(t *testing.T) {
 		Target:  &querypb.Target{Keyspace: "k", Shard: "s", TabletType: topodatapb.TabletType_REPLICA},
 		Up:      true,
 		Serving: true,
-		Stats:   &querypb.RealtimeStats{SecondsBehindMaster: 1, CpuUsage: 0.2},
+		Stats:   &querypb.RealtimeStats{SecondsBehindMain: 1, CpuUsage: 0.2},
 	}
 
 	ts4 := discovery.TabletStats{
@@ -164,7 +164,7 @@ func TestShuffleTablets(t *testing.T) {
 		Target:  &querypb.Target{Keyspace: "k", Shard: "s", TabletType: topodatapb.TabletType_REPLICA},
 		Up:      true,
 		Serving: true,
-		Stats:   &querypb.RealtimeStats{SecondsBehindMaster: 1, CpuUsage: 0.2},
+		Stats:   &querypb.RealtimeStats{SecondsBehindMain: 1, CpuUsage: 0.2},
 	}
 
 	sameCellTablets := []discovery.TabletStats{ts1, ts2}

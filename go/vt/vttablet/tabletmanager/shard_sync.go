@@ -63,7 +63,7 @@ func (agent *ActionAgent) shardSyncLoop(ctx context.Context) {
 	var retryChan <-chan time.Time
 
 	// shardWatch is how we get notified when the shard record is updated.
-	// We only watch the shard record while we are master.
+	// We only watch the shard record while we are main.
 	shardWatch := &shardWatcher{}
 	defer shardWatch.stop()
 
@@ -101,29 +101,29 @@ func (agent *ActionAgent) shardSyncLoop(ctx context.Context) {
 
 		switch tablet.Type {
 		case topodatapb.TabletType_MASTER:
-			// If we think we're master, check if we need to update the shard record.
-			masterAlias, err := syncShardMaster(ctx, agent.TopoServer, tablet, agent.masterTermStartTime())
+			// If we think we're main, check if we need to update the shard record.
+			mainAlias, err := syncShardMain(ctx, agent.TopoServer, tablet, agent.mainTermStartTime())
 			if err != nil {
 				log.Errorf("Failed to sync shard record: %v", err)
 				// Start retry timer and go back to sleep.
 				retryChan = time.After(*shardSyncRetryDelay)
 				continue
 			}
-			if !topoproto.TabletAliasEqual(masterAlias, tablet.Alias) {
-				// Another master has taken over while we still think we're master.
-				if err := agent.abortMasterTerm(ctx, masterAlias); err != nil {
-					log.Errorf("Failed to abort master term: %v", err)
+			if !topoproto.TabletAliasEqual(mainAlias, tablet.Alias) {
+				// Another main has taken over while we still think we're main.
+				if err := agent.abortMainTerm(ctx, mainAlias); err != nil {
+					log.Errorf("Failed to abort main term: %v", err)
 					// Start retry timer and go back to sleep.
 					retryChan = time.After(*shardSyncRetryDelay)
 					continue
 				}
-				// We're not master anymore, so stop watching the shard record.
+				// We're not main anymore, so stop watching the shard record.
 				shardWatch.stop()
 				continue
 			}
 
-			// As long as we're master, watch the shard record so we'll be
-			// notified if another master takes over.
+			// As long as we're main, watch the shard record so we'll be
+			// notified if another main takes over.
 			if shardWatch.active() {
 				// We already have an active watch. Nothing to do.
 				continue
@@ -135,95 +135,95 @@ func (agent *ActionAgent) shardSyncLoop(ctx context.Context) {
 				continue
 			}
 		default:
-			// If we're not master, stop watching the shard record,
-			// so only masters contribute to global topo watch load.
+			// If we're not main, stop watching the shard record,
+			// so only mains contribute to global topo watch load.
 			shardWatch.stop()
 		}
 	}
 }
 
-// syncShardMaster is called when we think we're master.
+// syncShardMain is called when we think we're main.
 // It checks that the shard record agrees, and updates it if possible.
 //
-// If the returned error is nil, the returned masterAlias indicates the current
-// master tablet according to the shard record.
+// If the returned error is nil, the returned mainAlias indicates the current
+// main tablet according to the shard record.
 //
-// If the shard record indicates a new master has taken over, this returns
-// success (we successfully synchronized), but the returned masterAlias will be
+// If the shard record indicates a new main has taken over, this returns
+// success (we successfully synchronized), but the returned mainAlias will be
 // different from the input tablet.Alias.
-func syncShardMaster(ctx context.Context, ts *topo.Server, tablet *topodatapb.Tablet, masterTermStartTime time.Time) (masterAlias *topodatapb.TabletAlias, err error) {
+func syncShardMain(ctx context.Context, ts *topo.Server, tablet *topodatapb.Tablet, mainTermStartTime time.Time) (mainAlias *topodatapb.TabletAlias, err error) {
 	ctx, cancel := context.WithTimeout(ctx, *topo.RemoteOperationTimeout)
 	defer cancel()
 
 	var shardInfo *topo.ShardInfo
 	_, err = ts.UpdateShardFields(ctx, tablet.Keyspace, tablet.Shard, func(si *topo.ShardInfo) error {
-		lastTerm := si.GetMasterTermStartTime()
+		lastTerm := si.GetMainTermStartTime()
 
 		// Save the ShardInfo so we can check it afterward.
 		// We can't use the return value of UpdateShardFields because it might be nil.
 		shardInfo = si
 
 		// Only attempt an update if our term is more recent.
-		if !masterTermStartTime.After(lastTerm) {
+		if !mainTermStartTime.After(lastTerm) {
 			return topo.NewError(topo.NoUpdateNeeded, si.ShardName())
 		}
 
 		aliasStr := topoproto.TabletAliasString(tablet.Alias)
-		log.Infof("Updating shard record: master_alias=%v, master_term_start_time=%v", aliasStr, masterTermStartTime)
-		si.MasterAlias = tablet.Alias
-		si.MasterTermStartTime = logutil.TimeToProto(masterTermStartTime)
+		log.Infof("Updating shard record: main_alias=%v, main_term_start_time=%v", aliasStr, mainTermStartTime)
+		si.MainAlias = tablet.Alias
+		si.MainTermStartTime = logutil.TimeToProto(mainTermStartTime)
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return shardInfo.MasterAlias, nil
+	return shardInfo.MainAlias, nil
 }
 
-// abortMasterTerm is called when we unexpectedly lost mastership.
+// abortMainTerm is called when we unexpectedly lost mainship.
 //
 // Under normal circumstances, we should be gracefully demoted before a new
-// master appears. This function is only reached when that graceful demotion
-// failed or was skipped, so we only found out we're no longer master after the
-// new master started advertising itself.
+// main appears. This function is only reached when that graceful demotion
+// failed or was skipped, so we only found out we're no longer main after the
+// new main started advertising itself.
 //
 // If active reparents are enabled, we demote our own MySQL to a replica and
 // update our tablet type to REPLICA.
 //
 // If active reparents are disabled, we don't touch our MySQL.
 // We just directly update our tablet type to REPLICA.
-func (agent *ActionAgent) abortMasterTerm(ctx context.Context, masterAlias *topodatapb.TabletAlias) error {
-	masterAliasStr := topoproto.TabletAliasString(masterAlias)
-	log.Warningf("Another tablet (%v) has won master election. Stepping down to %v.", masterAliasStr, agent.DemoteMasterType)
+func (agent *ActionAgent) abortMainTerm(ctx context.Context, mainAlias *topodatapb.TabletAlias) error {
+	mainAliasStr := topoproto.TabletAliasString(mainAlias)
+	log.Warningf("Another tablet (%v) has won main election. Stepping down to %v.", mainAliasStr, agent.DemoteMainType)
 
 	if *mysqlctl.DisableActiveReparents {
 		// Don't touch anything at the MySQL level. Just update tablet state.
 		log.Infof("Active reparents are disabled; updating tablet state only.")
 		changeTypeCtx, cancel := context.WithTimeout(ctx, *topo.RemoteOperationTimeout)
 		defer cancel()
-		if err := agent.ChangeType(changeTypeCtx, agent.DemoteMasterType); err != nil {
-			return vterrors.Wrapf(err, "failed to change type to %v", agent.DemoteMasterType)
+		if err := agent.ChangeType(changeTypeCtx, agent.DemoteMainType); err != nil {
+			return vterrors.Wrapf(err, "failed to change type to %v", agent.DemoteMainType)
 		}
 		return nil
 	}
 
 	// Do a full demotion to convert MySQL into a replica.
 	// We do not revert on partial failure here because this code path only
-	// triggers after a new master has taken over, so we are past the point of
+	// triggers after a new main has taken over, so we are past the point of
 	// no return. Instead, we should leave partial results and retry the rest
 	// later.
 	log.Infof("Active reparents are enabled; converting MySQL to replica.")
-	demoteMasterCtx, cancelDemoteMaster := context.WithTimeout(ctx, *topo.RemoteOperationTimeout)
-	defer cancelDemoteMaster()
-	if _, err := agent.demoteMaster(demoteMasterCtx, false /* revertPartialFailure */); err != nil {
-		return vterrors.Wrap(err, "failed to demote master")
+	demoteMainCtx, cancelDemoteMain := context.WithTimeout(ctx, *topo.RemoteOperationTimeout)
+	defer cancelDemoteMain()
+	if _, err := agent.demoteMain(demoteMainCtx, false /* revertPartialFailure */); err != nil {
+		return vterrors.Wrap(err, "failed to demote main")
 	}
-	setMasterCtx, cancelSetMaster := context.WithTimeout(ctx, *topo.RemoteOperationTimeout)
-	defer cancelSetMaster()
-	log.Infof("Attempting to reparent self to new master %v.", masterAliasStr)
-	if err := agent.SetMaster(setMasterCtx, masterAlias, 0, "", true); err != nil {
-		return vterrors.Wrap(err, "failed to reparent self to new master")
+	setMainCtx, cancelSetMain := context.WithTimeout(ctx, *topo.RemoteOperationTimeout)
+	defer cancelSetMain()
+	log.Infof("Attempting to reparent self to new main %v.", mainAliasStr)
+	if err := agent.SetMain(setMainCtx, mainAlias, 0, "", true); err != nil {
+		return vterrors.Wrap(err, "failed to reparent self to new main")
 	}
 	return nil
 }
@@ -284,13 +284,13 @@ func (agent *ActionAgent) notifyShardSync() {
 	}
 }
 
-// setMasterTermStartTime remembers the time when our term as master began.
+// setMainTermStartTime remembers the time when our term as main began.
 //
-// If another tablet claims to be master and offers a more recent time,
+// If another tablet claims to be main and offers a more recent time,
 // that tablet will be trusted over us.
-func (agent *ActionAgent) setMasterTermStartTime(t time.Time) {
+func (agent *ActionAgent) setMainTermStartTime(t time.Time) {
 	agent.mutex.Lock()
-	agent._masterTermStartTime = t
+	agent._mainTermStartTime = t
 	agent._replicationDelay = 0
 	agent.mutex.Unlock()
 
@@ -298,8 +298,8 @@ func (agent *ActionAgent) setMasterTermStartTime(t time.Time) {
 	agent.notifyShardSync()
 }
 
-func (agent *ActionAgent) masterTermStartTime() time.Time {
+func (agent *ActionAgent) mainTermStartTime() time.Time {
 	agent.mutex.Lock()
 	defer agent.mutex.Unlock()
-	return agent._masterTermStartTime
+	return agent._mainTermStartTime
 }

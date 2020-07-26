@@ -249,16 +249,16 @@ func TestInitTablet(t *testing.T) {
 	if string(ti.KeyRange.Start) != "" || string(ti.KeyRange.End) != "\xc0" {
 		t.Errorf("wrong KeyRange for tablet: %v", ti.KeyRange)
 	}
-	if got := agent._masterTermStartTime; !got.IsZero() {
-		t.Fatalf("REPLICA tablet should not have a MasterTermStartTime set: %v", got)
+	if got := agent._mainTermStartTime; !got.IsZero() {
+		t.Fatalf("REPLICA tablet should not have a MainTermStartTime set: %v", got)
 	}
 
-	// 2. Update shard's master to our alias, then try to init again.
-	// (This simulates the case where the MasterAlias in the shard record says
-	// that we are the master but the tablet record says otherwise. In that case,
+	// 2. Update shard's main to our alias, then try to init again.
+	// (This simulates the case where the MainAlias in the shard record says
+	// that we are the main but the tablet record says otherwise. In that case,
 	// we assume we are not the MASTER.)
 	_, err = agent.TopoServer.UpdateShardFields(ctx, "test_keyspace", "-c0", func(si *topo.ShardInfo) error {
-		si.MasterAlias = tabletAlias
+		si.MainAlias = tabletAlias
 		return nil
 	})
 	if err != nil {
@@ -275,8 +275,8 @@ func TestInitTablet(t *testing.T) {
 	if ti.Type != topodatapb.TabletType_REPLICA {
 		t.Errorf("wrong tablet type: %v", ti.Type)
 	}
-	if got := agent._masterTermStartTime; !got.IsZero() {
-		t.Fatalf("REPLICA tablet should not have a masterTermStartTime set: %v", got)
+	if got := agent._mainTermStartTime; !got.IsZero() {
+		t.Fatalf("REPLICA tablet should not have a mainTermStartTime set: %v", got)
 	}
 
 	// 3. Delete the tablet record. The shard record still says that we are the
@@ -295,12 +295,12 @@ func TestInitTablet(t *testing.T) {
 	if ti.Type != topodatapb.TabletType_MASTER {
 		t.Errorf("wrong tablet type: %v", ti.Type)
 	}
-	ter1 := agent._masterTermStartTime
+	ter1 := agent._mainTermStartTime
 	if ter1.IsZero() {
-		t.Fatalf("MASTER tablet should have a masterTermStartTime set")
+		t.Fatalf("MASTER tablet should have a mainTermStartTime set")
 	}
 
-	// 4. Fix the tablet record to agree that we're master.
+	// 4. Fix the tablet record to agree that we're main.
 	// Shard and tablet record are in sync now and we assume that we are actually
 	// the MASTER.
 	ti.Type = topodatapb.TabletType_MASTER
@@ -317,9 +317,9 @@ func TestInitTablet(t *testing.T) {
 	if ti.Type != topodatapb.TabletType_MASTER {
 		t.Errorf("wrong tablet type: %v", ti.Type)
 	}
-	ter2 := agent._masterTermStartTime
+	ter2 := agent._mainTermStartTime
 	if ter2.IsZero() || !ter2.Equal(ter1) {
-		t.Fatalf("After a restart, masterTermStartTime must be equal to the previous time saved in the tablet record. Previous timestamp: %v current timestamp: %v", ter1, ter2)
+		t.Fatalf("After a restart, mainTermStartTime must be equal to the previous time saved in the tablet record. Previous timestamp: %v current timestamp: %v", ter1, ter2)
 	}
 
 	// 5. Subsequent inits will still start the vttablet as MASTER.
@@ -342,8 +342,8 @@ func TestInitTablet(t *testing.T) {
 	if len(ti.Tags) != 1 || ti.Tags["aaa"] != "bbb" {
 		t.Errorf("wrong tablet tags: %v", ti.Tags)
 	}
-	ter3 := agent._masterTermStartTime
+	ter3 := agent._mainTermStartTime
 	if ter3.IsZero() || !ter3.Equal(ter2) {
-		t.Fatalf("After a restart, masterTermStartTime must be set to the previous time saved in the tablet record. Previous timestamp: %v current timestamp: %v", ter2, ter3)
+		t.Fatalf("After a restart, mainTermStartTime must be set to the previous time saved in the tablet record. Previous timestamp: %v current timestamp: %v", ter2, ter3)
 	}
 }

@@ -75,14 +75,14 @@ import (
 )
 
 const (
-	// slaveStoppedFile is the file name for the file whose existence informs
+	// subordinateStoppedFile is the file name for the file whose existence informs
 	// vttablet to NOT try to repair replication.
-	slaveStoppedFile = "do_not_replicate"
+	subordinateStoppedFile = "do_not_replicate"
 )
 
 var (
 	tabletHostname       = flag.String("tablet_hostname", "", "if not empty, this hostname will be assumed instead of trying to resolve it")
-	demoteMasterType     = flag.String("demote_master_type", "REPLICA", "the tablet type a demoted master will transition to")
+	demoteMainType     = flag.String("demote_main_type", "REPLICA", "the tablet type a demoted main will transition to")
 	initPopulateMetadata = flag.Bool("init_populate_metadata", false, "(init parameter) populate metadata tables even if restore_from_backup is disabled. If restore_from_backup is enabled, metadata tables are always populated regardless of this flag.")
 )
 
@@ -98,7 +98,7 @@ type ActionAgent struct {
 	MysqlDaemon         mysqlctl.MysqlDaemon
 	DBConfigs           *dbconfigs.DBConfigs
 	VREngine            *vreplication.Engine
-	DemoteMasterType    topodatapb.TabletType
+	DemoteMainType    topodatapb.TabletType
 
 	// exportStats is set only for production tablet.
 	exportStats bool
@@ -222,16 +222,16 @@ type ActionAgent struct {
 	// replication delay the last time we got it
 	_replicationDelay time.Duration
 
-	// _masterTermStartTime is the time at which our term as master began.
-	_masterTermStartTime time.Time
+	// _mainTermStartTime is the time at which our term as main began.
+	_mainTermStartTime time.Time
 
 	// _ignoreHealthErrorExpr can be set by RPC to selectively disable certain
 	// healthcheck errors. It should only be accessed while holding actionMutex.
 	_ignoreHealthErrorExpr *regexp.Regexp
 
-	// _slaveStopped remembers if we've been told to stop replicating.
-	// If it's nil, we'll try to check for the slaveStoppedFile.
-	_slaveStopped *bool
+	// _subordinateStopped remembers if we've been told to stop replicating.
+	// If it's nil, we'll try to check for the subordinateStoppedFile.
+	_subordinateStopped *bool
 
 	// _lockTablesConnection is used to get and release the table read locks to pause replication
 	_lockTablesConnection *dbconnpool.DBConnection
@@ -260,7 +260,7 @@ func NewActionAgent(
 		return nil, err
 	}
 
-	demoteMasterTabletType, err := validateDemoteMasterType()
+	demoteMainTabletType, err := validateDemoteMainType()
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func NewActionAgent(
 		Cnf:                 mycnf,
 		MysqlDaemon:         mysqld,
 		History:             history.New(historyLength),
-		DemoteMasterType:    demoteMasterTabletType,
+		DemoteMainType:    demoteMainTabletType,
 		_healthy:            fmt.Errorf("healthcheck not run yet"),
 		orc:                 orc,
 	}
@@ -398,9 +398,9 @@ func NewTestActionAgent(batchCtx context.Context, ts *topo.Server, tabletAlias *
 		panic(vterrors.Wrap(err, "failed reading tablet"))
 	}
 
-	demoteMasterTabletType, err := validateDemoteMasterType()
+	demoteMainTabletType, err := validateDemoteMainType()
 	if err != nil {
-		panic(vterrors.Wrapf(err, "failed to parse tablet type %v", demoteMasterTabletType))
+		panic(vterrors.Wrapf(err, "failed to parse tablet type %v", demoteMainTabletType))
 	}
 
 	agent := &ActionAgent{
@@ -414,7 +414,7 @@ func NewTestActionAgent(batchCtx context.Context, ts *topo.Server, tabletAlias *
 		MysqlDaemon:         mysqlDaemon,
 		VREngine:            vreplication.NewTestEngine(ts, tabletAlias.Cell, mysqlDaemon, binlogplayer.NewFakeDBClient, ti.DbName(), nil),
 		History:             history.New(historyLength),
-		DemoteMasterType:    demoteMasterTabletType,
+		DemoteMainType:    demoteMainTabletType,
 		_healthy:            fmt.Errorf("healthcheck not run yet"),
 	}
 	if preStart != nil {
@@ -442,7 +442,7 @@ func NewTestActionAgent(batchCtx context.Context, ts *topo.Server, tabletAlias *
 // within the vtcombo binary. It cannot be called concurrently,
 // as it changes the flags.
 func NewComboActionAgent(batchCtx context.Context, ts *topo.Server, tabletAlias *topodatapb.TabletAlias, vtPort, grpcPort int32, queryServiceControl tabletserver.Controller, dbcfgs *dbconfigs.DBConfigs, mysqlDaemon mysqlctl.MysqlDaemon, keyspace, shard, dbname, tabletType string) *ActionAgent {
-	demoteMasterType, err := validateDemoteMasterType()
+	demoteMainType, err := validateDemoteMainType()
 	if err != nil {
 		panic(vterrors.Wrapf(err, "failed to parse tablet type %v", tabletType))
 	}
@@ -459,7 +459,7 @@ func NewComboActionAgent(batchCtx context.Context, ts *topo.Server, tabletAlias 
 		VREngine:            vreplication.NewTestEngine(nil, "", nil, nil, "", nil),
 		gotMysqlPort:        true,
 		History:             history.New(historyLength),
-		DemoteMasterType:    demoteMasterType,
+		DemoteMainType:    demoteMainType,
 		_healthy:            fmt.Errorf("healthcheck not run yet"),
 	}
 	agent.registerQueryRuleSources()
@@ -552,13 +552,13 @@ func (agent *ActionAgent) EnableUpdateStream() bool {
 	return agent._enableUpdateStream
 }
 
-func (agent *ActionAgent) slaveStopped() bool {
+func (agent *ActionAgent) subordinateStopped() bool {
 	agent.mutex.Lock()
 	defer agent.mutex.Unlock()
 
 	// If we already know the value, don't bother checking the file.
-	if agent._slaveStopped != nil {
-		return *agent._slaveStopped
+	if agent._subordinateStopped != nil {
+		return *agent._subordinateStopped
 	}
 
 	// If there's no Cnf file, don't read state.
@@ -568,17 +568,17 @@ func (agent *ActionAgent) slaveStopped() bool {
 
 	// If the marker file exists, we're stopped.
 	// Treat any read error as if the file doesn't exist.
-	_, err := os.Stat(path.Join(agent.Cnf.TabletDir(), slaveStoppedFile))
-	slaveStopped := err == nil
-	agent._slaveStopped = &slaveStopped
-	return slaveStopped
+	_, err := os.Stat(path.Join(agent.Cnf.TabletDir(), subordinateStoppedFile))
+	subordinateStopped := err == nil
+	agent._subordinateStopped = &subordinateStopped
+	return subordinateStopped
 }
 
-func (agent *ActionAgent) setSlaveStopped(slaveStopped bool) {
+func (agent *ActionAgent) setSubordinateStopped(subordinateStopped bool) {
 	agent.mutex.Lock()
 	defer agent.mutex.Unlock()
 
-	agent._slaveStopped = &slaveStopped
+	agent._subordinateStopped = &subordinateStopped
 
 	// Make a best-effort attempt to persist the value across tablet restarts.
 	// We store a marker in the filesystem so it works regardless of whether
@@ -591,8 +591,8 @@ func (agent *ActionAgent) setSlaveStopped(slaveStopped bool) {
 	if tabletDir == "" {
 		return
 	}
-	markerFile := path.Join(tabletDir, slaveStoppedFile)
-	if slaveStopped {
+	markerFile := path.Join(tabletDir, subordinateStoppedFile)
+	if subordinateStopped {
 		file, err := os.Create(markerFile)
 		if err == nil {
 			file.Close()
@@ -897,13 +897,13 @@ func (agent *ActionAgent) withRetry(ctx context.Context, description string, wor
 	}
 }
 
-func validateDemoteMasterType() (topodatapb.TabletType, error) {
-	tabletType, err := topoproto.ParseTabletType(*demoteMasterType)
+func validateDemoteMainType() (topodatapb.TabletType, error) {
+	tabletType, err := topoproto.ParseTabletType(*demoteMainType)
 	if err != nil {
 		return topodatapb.TabletType_UNKNOWN, err
 	}
 	if tabletType != topodatapb.TabletType_SPARE && tabletType != topodatapb.TabletType_REPLICA {
-		return topodatapb.TabletType_UNKNOWN, fmt.Errorf("invalid demote_master_type %v; can only be REPLICA or SPARE", tabletType)
+		return topodatapb.TabletType_UNKNOWN, fmt.Errorf("invalid demote_main_type %v; can only be REPLICA or SPARE", tabletType)
 	}
 	if tabletType == topodatapb.TabletType_SPARE && !*mysqlctl.DisableActiveReparents {
 		return topodatapb.TabletType_UNKNOWN, fmt.Errorf("demote to SPARE is only allowed when active reparents is disabled (set the -disable_active_reparents flag to disable)")

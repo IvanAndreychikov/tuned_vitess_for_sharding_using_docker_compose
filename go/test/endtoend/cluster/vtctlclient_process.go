@@ -34,10 +34,10 @@ type VtctlClientProcess struct {
 	ZoneName      string
 }
 
-// InitShardMaster executes vtctlclient command to make one of tablet as master
-func (vtctlclient *VtctlClientProcess) InitShardMaster(Keyspace string, Shard string, Cell string, TabletUID int) (err error) {
+// InitShardMain executes vtctlclient command to make one of tablet as main
+func (vtctlclient *VtctlClientProcess) InitShardMain(Keyspace string, Shard string, Cell string, TabletUID int) (err error) {
 	return vtctlclient.ExecuteCommand(
-		"InitShardMaster",
+		"InitShardMain",
 		"-force",
 		fmt.Sprintf("%s/%s", Keyspace, Shard),
 		fmt.Sprintf("%s-%d", Cell, TabletUID))

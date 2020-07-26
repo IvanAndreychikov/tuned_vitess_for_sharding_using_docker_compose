@@ -44,9 +44,9 @@ const (
 	// vdiffSourceGtid should be the position reported by the source side VStreamResults.
 	// It's expected to be higher the vdiffStopPosition.
 	vdiffSourceGtid = "MariaDB/5-456-893"
-	// vdiffTargetMasterPosition is the master position of the target after
+	// vdiffTargetMainPosition is the main position of the target after
 	// vreplication has been synchronized.
-	vdiffTargetMasterPosition = "MariaDB/6-456-892"
+	vdiffTargetMainPosition = "MariaDB/6-456-892"
 )
 
 type testVDiffEnv struct {
@@ -100,7 +100,7 @@ func newTestVDiffEnv(sourceShards, targetShards []string, query string, position
 	}
 	tabletID = 200
 	for _, shard := range targetShards {
-		master := env.addTablet(tabletID, "target", shard, topodatapb.TabletType_MASTER)
+		main := env.addTablet(tabletID, "target", shard, topodatapb.TabletType_MASTER)
 		_ = env.addTablet(tabletID+1, "target", shard, topodatapb.TabletType_REPLICA)
 
 		var rows []string
@@ -126,14 +126,14 @@ func newTestVDiffEnv(sourceShards, targetShards []string, query string, position
 			// vdiff.syncTargets. This actually happens after stopTargets.
 			// But this is one statement per stream.
 			env.tmc.setVRResults(
-				master.tablet,
+				main.tablet,
 				fmt.Sprintf("update _vt.vreplication set state='Running', stop_pos='%s', message='synchronizing for vdiff' where id=%d", vdiffSourceGtid, j+1),
 				&sqltypes.Result{},
 			)
 		}
 		// migrater buildMigrationTargets
 		env.tmc.setVRResults(
-			master.tablet,
+			main.tablet,
 			"select id, source, message from _vt.vreplication where workflow='vdiffTest' and db_name='vt_target'",
 			sqltypes.MakeTestResult(sqltypes.MakeTestFields(
 				"id|source|message",
@@ -143,9 +143,9 @@ func newTestVDiffEnv(sourceShards, targetShards []string, query string, position
 		)
 
 		// vdiff.stopTargets
-		env.tmc.setVRResults(master.tablet, "update _vt.vreplication set state='Stopped', message='for vdiff' where db_name='vt_target' and workflow='vdiffTest'", &sqltypes.Result{})
+		env.tmc.setVRResults(main.tablet, "update _vt.vreplication set state='Stopped', message='for vdiff' where db_name='vt_target' and workflow='vdiffTest'", &sqltypes.Result{})
 		env.tmc.setVRResults(
-			master.tablet,
+			main.tablet,
 			"select source, pos from _vt.vreplication where db_name='vt_target' and workflow='vdiffTest'",
 			sqltypes.MakeTestResult(sqltypes.MakeTestFields(
 				"source|pos",
@@ -156,13 +156,13 @@ func newTestVDiffEnv(sourceShards, targetShards []string, query string, position
 
 		// vdiff.syncTargets (continued)
 		env.tmc.vrpos[tabletID] = vdiffSourceGtid
-		env.tmc.pos[tabletID] = vdiffTargetMasterPosition
+		env.tmc.pos[tabletID] = vdiffTargetMainPosition
 
 		// vdiff.startQueryStreams
-		env.tmc.waitpos[tabletID+1] = vdiffTargetMasterPosition
+		env.tmc.waitpos[tabletID+1] = vdiffTargetMainPosition
 
 		// vdiff.restartTargets
-		env.tmc.setVRResults(master.tablet, "update _vt.vreplication set state='Running', message='', stop_pos='' where db_name='vt_target' and workflow='vdiffTest'", &sqltypes.Result{})
+		env.tmc.setVRResults(main.tablet, "update _vt.vreplication set state='Running', message='', stop_pos='' where db_name='vt_target' and workflow='vdiffTest'", &sqltypes.Result{})
 
 		tabletID += 10
 	}
@@ -196,12 +196,12 @@ func (env *testVDiffEnv) addTablet(id int, keyspace, shard string, tabletType to
 		},
 	}
 	env.tablets[id] = newTestVDiffTablet(tablet)
-	if err := env.wr.InitTablet(context.Background(), tablet, false /* allowMasterOverride */, true /* createShardAndKeyspace */, false /* allowUpdate */); err != nil {
+	if err := env.wr.InitTablet(context.Background(), tablet, false /* allowMainOverride */, true /* createShardAndKeyspace */, false /* allowUpdate */); err != nil {
 		panic(err)
 	}
 	if tabletType == topodatapb.TabletType_MASTER {
 		_, err := env.wr.ts.UpdateShardFields(context.Background(), keyspace, shard, func(si *topo.ShardInfo) error {
-			si.MasterAlias = tablet.Alias
+			si.MainAlias = tablet.Alias
 			return nil
 		})
 		if err != nil {
@@ -334,10 +334,10 @@ func (tmc *testVDiffTMClient) VReplicationWaitForPos(ctx context.Context, tablet
 	return nil
 }
 
-func (tmc *testVDiffTMClient) MasterPosition(ctx context.Context, tablet *topodatapb.Tablet) (string, error) {
+func (tmc *testVDiffTMClient) MainPosition(ctx context.Context, tablet *topodatapb.Tablet) (string, error) {
 	pos, ok := tmc.pos[int(tablet.Alias.Uid)]
 	if !ok {
-		return "", fmt.Errorf("no master position for %d", tablet.Alias.Uid)
+		return "", fmt.Errorf("no main position for %d", tablet.Alias.Uid)
 	}
 	return pos, nil
 }

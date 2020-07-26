@@ -59,16 +59,16 @@ func (ki *KeyspaceInfo) GetServedFrom(tabletType topodatapb.TabletType) *topodat
 
 // CheckServedFromMigration makes sure a requested migration is safe
 func (ki *KeyspaceInfo) CheckServedFromMigration(tabletType topodatapb.TabletType, cells []string, keyspace string, remove bool) error {
-	// master is a special case with a few extra checks
+	// main is a special case with a few extra checks
 	if tabletType == topodatapb.TabletType_MASTER {
 		if !remove {
-			return vterrors.Errorf(vtrpcpb.Code_FAILED_PRECONDITION, "cannot add master back to %v", ki.keyspace)
+			return vterrors.Errorf(vtrpcpb.Code_FAILED_PRECONDITION, "cannot add main back to %v", ki.keyspace)
 		}
 		if len(cells) > 0 {
-			return vterrors.Errorf(vtrpcpb.Code_FAILED_PRECONDITION, "cannot migrate only some cells for master removal in keyspace %v", ki.keyspace)
+			return vterrors.Errorf(vtrpcpb.Code_FAILED_PRECONDITION, "cannot migrate only some cells for main removal in keyspace %v", ki.keyspace)
 		}
 		if len(ki.ServedFroms) > 1 {
-			return vterrors.Errorf(vtrpcpb.Code_FAILED_PRECONDITION, "cannot migrate master into %v until everything else is migrated", ki.keyspace)
+			return vterrors.Errorf(vtrpcpb.Code_FAILED_PRECONDITION, "cannot migrate main into %v until everything else is migrated", ki.keyspace)
 		}
 	}
 
@@ -240,7 +240,7 @@ func (ts *Server) FindAllShardsInKeyspace(ctx context.Context, keyspace string) 
 	return result, nil
 }
 
-// GetServingShards returns all shards where the master is serving.
+// GetServingShards returns all shards where the main is serving.
 func (ts *Server) GetServingShards(ctx context.Context, keyspace string) ([]*ShardInfo, error) {
 	shards, err := ts.GetShardNames(ctx, keyspace)
 	if err != nil {
@@ -253,7 +253,7 @@ func (ts *Server) GetServingShards(ctx context.Context, keyspace string) ([]*Sha
 		if err != nil {
 			return nil, vterrors.Wrapf(err, "GetShard(%v, %v) failed", keyspace, shard)
 		}
-		if !si.IsMasterServing {
+		if !si.IsMainServing {
 			continue
 		}
 		result = append(result, si)

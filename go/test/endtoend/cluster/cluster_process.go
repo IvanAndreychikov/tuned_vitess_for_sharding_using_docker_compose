@@ -123,8 +123,8 @@ type Shard struct {
 	Vttablets []*Vttablet
 }
 
-// MasterTablet get the 1st tablet which is master
-func (shard *Shard) MasterTablet() *Vttablet {
+// MainTablet get the 1st tablet which is main
+func (shard *Shard) MainTablet() *Vttablet {
 	return shard.Vttablets[0]
 }
 
@@ -139,7 +139,7 @@ func (shard *Shard) Rdonly() *Vttablet {
 }
 
 // Replica get the last but one tablet which is replica
-// Mostly we have either 3 tablet setup [master, replica, rdonly]
+// Mostly we have either 3 tablet setup [main, replica, rdonly]
 func (shard *Shard) Replica() *Vttablet {
 	for idx, tablet := range shard.Vttablets {
 		if tablet.Type == "replica" && idx > 0 {
@@ -218,12 +218,12 @@ func (cluster *LocalProcessCluster) StartUnshardedKeyspace(keyspace Keyspace, re
 // StartKeyspace starts required number of shard and the corresponding tablets
 // keyspace : struct containing keyspace name, Sqlschema to apply, VSchema to apply
 // shardName : list of shard names
-// replicaCount: total number of replicas excluding master and rdonly
+// replicaCount: total number of replicas excluding main and rdonly
 // rdonly: whether readonly tablets needed
 // customizers: functions like "func(*VttabletProcess)" that can modify settings of various objects
 // after they're created.
 func (cluster *LocalProcessCluster) StartKeyspace(keyspace Keyspace, shardNames []string, replicaCount int, rdonly bool, customizers ...interface{}) (err error) {
-	totalTabletsRequired := replicaCount + 1 // + 1 is for master
+	totalTabletsRequired := replicaCount + 1 // + 1 is for main
 	if rdonly {
 		totalTabletsRequired = totalTabletsRequired + 1 // + 1 for rdonly
 	}
@@ -247,8 +247,8 @@ func (cluster *LocalProcessCluster) StartKeyspace(keyspace Keyspace, shardNames 
 				MySQLPort: cluster.GetAndReservePort(),
 				Alias:     fmt.Sprintf("%s-%010d", cluster.Cell, tabletUID),
 			}
-			if i == 0 { // Make the first one as master
-				tablet.Type = "master"
+			if i == 0 { // Make the first one as main
+				tablet.Type = "main"
 			} else if i == totalTabletsRequired-1 && rdonly { // Make the last one as rdonly if rdonly flag is passed
 				tablet.Type = "rdonly"
 			}
@@ -309,8 +309,8 @@ func (cluster *LocalProcessCluster) StartKeyspace(keyspace Keyspace, shardNames 
 			}
 		}
 
-		// Make first tablet as master
-		if err = cluster.VtctlclientProcess.InitShardMaster(keyspace.Name, shardName, cluster.Cell, shard.Vttablets[0].TabletUID); err != nil {
+		// Make first tablet as main
+		if err = cluster.VtctlclientProcess.InitShardMain(keyspace.Name, shardName, cluster.Cell, shard.Vttablets[0].TabletUID); err != nil {
 			log.Errorf("error running ISM on keyspace %v, shard %v: %v", keyspace.Name, shardName, err)
 			return
 		}
@@ -466,7 +466,7 @@ func (cluster *LocalProcessCluster) WaitForTabletsToHealthyInVtgate() (err error
 	for _, keyspace := range cluster.Keyspaces {
 		for _, shard := range keyspace.Shards {
 			isRdOnlyPresent = false
-			if err = cluster.VtgateProcess.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", keyspace.Name, shard.Name), 1); err != nil {
+			if err = cluster.VtgateProcess.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", keyspace.Name, shard.Name), 1); err != nil {
 				return err
 			}
 			if err = cluster.VtgateProcess.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.replica", keyspace.Name, shard.Name), 1); err != nil {

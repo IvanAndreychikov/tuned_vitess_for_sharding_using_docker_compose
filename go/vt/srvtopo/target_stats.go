@@ -28,7 +28,7 @@ type TargetStatsEntry struct {
 	Target *querypb.Target
 
 	// TabletExternallyReparentedTimestamp is the latest timestamp
-	// that was reported for this entry. It applies to masters only.
+	// that was reported for this entry. It applies to mains only.
 	TabletExternallyReparentedTimestamp int64
 }
 

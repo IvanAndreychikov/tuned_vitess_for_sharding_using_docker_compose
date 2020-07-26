@@ -46,8 +46,8 @@ const vreplQueryks2 = "select id, source, message from _vt.vreplication where wo
 type testMigraterEnv struct {
 	ts              *topo.Server
 	wr              *Wrangler
-	sourceMasters   []*fakeTablet
-	targetMasters   []*fakeTablet
+	sourceMains   []*fakeTablet
+	targetMains   []*fakeTablet
 	dbSourceClients []*fakeDBClient
 	dbTargetClients []*fakeDBClient
 	allDBClients    []*fakeDBClient
@@ -82,7 +82,7 @@ func newTestTableMigraterCustom(ctx context.Context, t *testing.T, sourceShards,
 	tme.tmeDB = fakesqldb.New(t)
 	tabletID := 10
 	for _, shard := range sourceShards {
-		tme.sourceMasters = append(tme.sourceMasters, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, tme.tmeDB, TabletKeyspaceShard(t, "ks1", shard)))
+		tme.sourceMains = append(tme.sourceMains, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, tme.tmeDB, TabletKeyspaceShard(t, "ks1", shard)))
 		tabletID += 10
 
 		_, sourceKeyRange, err := topo.ValidateShardName(shard)
@@ -92,7 +92,7 @@ func newTestTableMigraterCustom(ctx context.Context, t *testing.T, sourceShards,
 		tme.sourceKeyRanges = append(tme.sourceKeyRanges, sourceKeyRange)
 	}
 	for _, shard := range targetShards {
-		tme.targetMasters = append(tme.targetMasters, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, tme.tmeDB, TabletKeyspaceShard(t, "ks2", shard)))
+		tme.targetMains = append(tme.targetMains, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, tme.tmeDB, TabletKeyspaceShard(t, "ks2", shard)))
 		tabletID += 10
 
 		_, targetKeyRange, err := topo.ValidateShardName(shard)
@@ -148,7 +148,7 @@ func newTestTableMigraterCustom(ctx context.Context, t *testing.T, sourceShards,
 
 	tme.startTablets(t)
 	tme.createDBClients(ctx, t)
-	tme.setMasterPositions()
+	tme.setMainPositions()
 
 	for i, targetShard := range targetShards {
 		var rows []string
@@ -200,7 +200,7 @@ func newTestShardMigrater(ctx context.Context, t *testing.T, sourceShards, targe
 
 	tabletID := 10
 	for _, shard := range sourceShards {
-		tme.sourceMasters = append(tme.sourceMasters, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, nil, TabletKeyspaceShard(t, "ks", shard)))
+		tme.sourceMains = append(tme.sourceMains, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, nil, TabletKeyspaceShard(t, "ks", shard)))
 		tabletID += 10
 
 		_, sourceKeyRange, err := topo.ValidateShardName(shard)
@@ -210,7 +210,7 @@ func newTestShardMigrater(ctx context.Context, t *testing.T, sourceShards, targe
 		tme.sourceKeyRanges = append(tme.sourceKeyRanges, sourceKeyRange)
 	}
 	for _, shard := range targetShards {
-		tme.targetMasters = append(tme.targetMasters, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, nil, TabletKeyspaceShard(t, "ks", shard)))
+		tme.targetMains = append(tme.targetMains, newFakeTablet(t, tme.wr, "cell1", uint32(tabletID), topodatapb.TabletType_MASTER, nil, TabletKeyspaceShard(t, "ks", shard)))
 		tabletID += 10
 
 		_, targetKeyRange, err := topo.ValidateShardName(shard)
@@ -261,7 +261,7 @@ func newTestShardMigrater(ctx context.Context, t *testing.T, sourceShards, targe
 
 	tme.startTablets(t)
 	tme.createDBClients(ctx, t)
-	tme.setMasterPositions()
+	tme.setMainPositions()
 
 	for i, targetShard := range targetShards {
 		var rows []string
@@ -296,68 +296,68 @@ func newTestShardMigrater(ctx context.Context, t *testing.T, sourceShards, targe
 }
 
 func (tme *testMigraterEnv) startTablets(t *testing.T) {
-	allMasters := append(tme.sourceMasters, tme.targetMasters...)
-	for _, master := range allMasters {
-		master.StartActionLoop(t, tme.wr)
+	allMains := append(tme.sourceMains, tme.targetMains...)
+	for _, main := range allMains {
+		main.StartActionLoop(t, tme.wr)
 	}
-	// Wait for the shard record masters to be set.
-	for _, master := range allMasters {
-		masterFound := false
+	// Wait for the shard record mains to be set.
+	for _, main := range allMains {
+		mainFound := false
 		for i := 0; i < 10; i++ {
-			si, err := tme.wr.ts.GetShard(context.Background(), master.Tablet.Keyspace, master.Tablet.Shard)
+			si, err := tme.wr.ts.GetShard(context.Background(), main.Tablet.Keyspace, main.Tablet.Shard)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if si.MasterAlias != nil {
-				masterFound = true
+			if si.MainAlias != nil {
+				mainFound = true
 				break
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		if !masterFound {
-			t.Fatalf("shard master did not get updated for tablet: %v", master)
+		if !mainFound {
+			t.Fatalf("shard main did not get updated for tablet: %v", main)
 		}
 	}
 }
 
 func (tme *testMigraterEnv) stopTablets(t *testing.T) {
-	for _, master := range tme.sourceMasters {
-		master.StopActionLoop(t)
+	for _, main := range tme.sourceMains {
+		main.StopActionLoop(t)
 	}
-	for _, master := range tme.targetMasters {
-		master.StopActionLoop(t)
+	for _, main := range tme.targetMains {
+		main.StopActionLoop(t)
 	}
 }
 
 func (tme *testMigraterEnv) createDBClients(ctx context.Context, t *testing.T) {
-	for _, master := range tme.sourceMasters {
+	for _, main := range tme.sourceMains {
 		dbclient := newFakeDBClient()
 		tme.dbSourceClients = append(tme.dbSourceClients, dbclient)
 		dbClientFactory := func() binlogplayer.DBClient { return dbclient }
 		// Replace existing engine with a new one
-		master.Agent.VREngine.Close()
-		master.Agent.VREngine = vreplication.NewTestEngine(tme.ts, "", master.FakeMysqlDaemon, dbClientFactory, dbclient.DBName(), nil)
-		if err := master.Agent.VREngine.Open(ctx); err != nil {
+		main.Agent.VREngine.Close()
+		main.Agent.VREngine = vreplication.NewTestEngine(tme.ts, "", main.FakeMysqlDaemon, dbClientFactory, dbclient.DBName(), nil)
+		if err := main.Agent.VREngine.Open(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, master := range tme.targetMasters {
+	for _, main := range tme.targetMains {
 		dbclient := newFakeDBClient()
 		tme.dbTargetClients = append(tme.dbTargetClients, dbclient)
 		dbClientFactory := func() binlogplayer.DBClient { return dbclient }
 		// Replace existing engine with a new one
-		master.Agent.VREngine.Close()
-		master.Agent.VREngine = vreplication.NewTestEngine(tme.ts, "", master.FakeMysqlDaemon, dbClientFactory, dbclient.DBName(), nil)
-		if err := master.Agent.VREngine.Open(ctx); err != nil {
+		main.Agent.VREngine.Close()
+		main.Agent.VREngine = vreplication.NewTestEngine(tme.ts, "", main.FakeMysqlDaemon, dbClientFactory, dbclient.DBName(), nil)
+		if err := main.Agent.VREngine.Open(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
 	tme.allDBClients = append(tme.dbSourceClients, tme.dbTargetClients...)
 }
 
-func (tme *testMigraterEnv) setMasterPositions() {
-	for _, master := range tme.sourceMasters {
-		master.FakeMysqlDaemon.CurrentMasterPosition = mysql.Position{
+func (tme *testMigraterEnv) setMainPositions() {
+	for _, main := range tme.sourceMains {
+		main.FakeMysqlDaemon.CurrentMainPosition = mysql.Position{
 			GTIDSet: mysql.MariadbGTIDSet{
 				5: mysql.MariadbGTID{
 					Domain:   5,
@@ -367,8 +367,8 @@ func (tme *testMigraterEnv) setMasterPositions() {
 			},
 		}
 	}
-	for _, master := range tme.targetMasters {
-		master.FakeMysqlDaemon.CurrentMasterPosition = mysql.Position{
+	for _, main := range tme.targetMains {
+		main.FakeMysqlDaemon.CurrentMainPosition = mysql.Position{
 			GTIDSet: mysql.MariadbGTIDSet{
 				5: mysql.MariadbGTID{
 					Domain:   5,

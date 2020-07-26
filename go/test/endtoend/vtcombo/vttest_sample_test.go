@@ -114,7 +114,7 @@ func TestStandalone(t *testing.T) {
 	conn, err := vtgateconn.Dial(ctx, grpcAddress)
 	require.Nil(t, err)
 	defer conn.Close()
-	cur := conn.Session(ks1+":-80@master", nil)
+	cur := conn.Session(ks1+":-80@main", nil)
 
 	idStart, rowCount := 1000, 500
 	query := "insert into test_table (id, msg, keyspace_id) values (:id, :msg, :keyspace_id)"
@@ -152,7 +152,7 @@ func TestStandalone(t *testing.T) {
 	require.Equal(t, 1, len(res.Rows))
 	assert.Equal(t, "VARCHAR(\"test1000\")", res.Rows[0][1].String())
 
-	cur = conn.Session(ks1+":80-@master", nil)
+	cur = conn.Session(ks1+":80-@main", nil)
 	_, err = cur.Execute(ctx, "begin", nil)
 	require.Nil(t, err)
 
@@ -175,7 +175,7 @@ func TestStandalone(t *testing.T) {
 	output, err := tmpCmd.CombinedOutput()
 	require.Nil(t, err)
 
-	numMaster, numReplica, numRdonly, numDash80, num80Dash := 0, 0, 0, 0, 0
+	numMain, numReplica, numRdonly, numDash80, num80Dash := 0, 0, 0, 0, 0
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		if !strings.HasPrefix(line, "test-") {
@@ -185,8 +185,8 @@ func TestStandalone(t *testing.T) {
 		assert.Equal(t, "test_keyspace", parts[1])
 
 		switch parts[3] {
-		case "master":
-			numMaster++
+		case "main":
+			numMain++
 		case "replica":
 			numReplica++
 		case "rdonly":
@@ -206,7 +206,7 @@ func TestStandalone(t *testing.T) {
 
 	}
 
-	assert.Equal(t, 2, numMaster)
+	assert.Equal(t, 2, numMain)
 	assert.Equal(t, 2, numReplica)
 	assert.Equal(t, 2, numRdonly)
 	assert.Equal(t, 3, numDash80)

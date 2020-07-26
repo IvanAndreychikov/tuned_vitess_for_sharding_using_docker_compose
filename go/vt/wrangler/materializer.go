@@ -285,10 +285,10 @@ func (wr *Wrangler) prepareCreateLookup(ctx context.Context, keyspace string, sp
 		return nil, nil, nil, err
 	}
 	onesource := sourceShards[0]
-	if onesource.MasterAlias == nil {
-		return nil, nil, nil, fmt.Errorf("source shard has no master: %v", onesource.ShardName())
+	if onesource.MainAlias == nil {
+		return nil, nil, nil, fmt.Errorf("source shard has no main: %v", onesource.ShardName())
 	}
-	tableSchema, err := wr.GetSchema(ctx, onesource.MasterAlias, []string{sourceTableName}, nil, false)
+	tableSchema, err := wr.GetSchema(ctx, onesource.MainAlias, []string{sourceTableName}, nil, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -468,11 +468,11 @@ func (wr *Wrangler) ExternalizeVindex(ctx context.Context, qualifiedVindexName s
 	}
 
 	err = forAllTargets(func(targetShard *topo.ShardInfo) error {
-		targetMaster, err := wr.ts.GetTablet(ctx, targetShard.MasterAlias)
+		targetMain, err := wr.ts.GetTablet(ctx, targetShard.MainAlias)
 		if err != nil {
 			return err
 		}
-		p3qr, err := wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, fmt.Sprintf("select id, state, message from _vt.vreplication where workflow=%s and db_name=%s", encodeString(workflow), encodeString(targetMaster.DbName())))
+		p3qr, err := wr.tmc.VReplicationExec(ctx, targetMain.Tablet, fmt.Sprintf("select id, state, message from _vt.vreplication where workflow=%s and db_name=%s", encodeString(workflow), encodeString(targetMain.DbName())))
 		if err != nil {
 			return err
 		}
@@ -505,12 +505,12 @@ func (wr *Wrangler) ExternalizeVindex(ctx context.Context, qualifiedVindexName s
 	if sourceVindex.Owner != "" {
 		// If there is an owner, we have to delete the streams.
 		err := forAllTargets(func(targetShard *topo.ShardInfo) error {
-			targetMaster, err := wr.ts.GetTablet(ctx, targetShard.MasterAlias)
+			targetMain, err := wr.ts.GetTablet(ctx, targetShard.MainAlias)
 			if err != nil {
 				return err
 			}
-			query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s", encodeString(targetMaster.DbName()), encodeString(workflow))
-			_, err = wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, query)
+			query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s", encodeString(targetMain.DbName()), encodeString(workflow))
+			_, err = wr.tmc.VReplicationExec(ctx, targetMain.Tablet, query)
 			if err != nil {
 				return err
 			}
@@ -585,7 +585,7 @@ func (wr *Wrangler) buildMaterializer(ctx context.Context, ms *vtctldatapb.Mater
 func (mz *materializer) deploySchema(ctx context.Context) error {
 	return mz.forAllTargets(func(target *topo.ShardInfo) error {
 		for _, ts := range mz.ms.TableSettings {
-			tableSchema, err := mz.wr.GetSchema(ctx, target.MasterAlias, []string{ts.TargetTable}, nil, false)
+			tableSchema, err := mz.wr.GetSchema(ctx, target.MainAlias, []string{ts.TargetTable}, nil, false)
 			if err != nil {
 				return err
 			}
@@ -605,11 +605,11 @@ func (mz *materializer) deploySchema(ctx context.Context) error {
 				if sourceTableName.Name.String() != ts.TargetTable {
 					return fmt.Errorf("source and target table names must match for copying schema: %v vs %v", sqlparser.String(sourceTableName), ts.TargetTable)
 				}
-				sourceMaster := mz.sourceShards[0].MasterAlias
-				if sourceMaster == nil {
-					return fmt.Errorf("source shard must have a master for copying schema: %v", mz.sourceShards[0].ShardName())
+				sourceMain := mz.sourceShards[0].MainAlias
+				if sourceMain == nil {
+					return fmt.Errorf("source shard must have a main for copying schema: %v", mz.sourceShards[0].ShardName())
 				}
-				sourceSchema, err := mz.wr.GetSchema(ctx, sourceMaster, []string{ts.TargetTable}, nil, false)
+				sourceSchema, err := mz.wr.GetSchema(ctx, sourceMain, []string{ts.TargetTable}, nil, false)
 				if err != nil {
 					return err
 				}
@@ -618,7 +618,7 @@ func (mz *materializer) deploySchema(ctx context.Context) error {
 				}
 				createddl = sourceSchema.TableDefinitions[0].Schema
 			}
-			targetTablet, err := mz.wr.ts.GetTablet(ctx, target.MasterAlias)
+			targetTablet, err := mz.wr.ts.GetTablet(ctx, target.MainAlias)
 			if err != nil {
 				return err
 			}
@@ -722,20 +722,20 @@ func matchColInSelect(col sqlparser.ColIdent, sel *sqlparser.Select) (*sqlparser
 
 func (mz *materializer) createStreams(ctx context.Context, inserts string) error {
 	return mz.forAllTargets(func(target *topo.ShardInfo) error {
-		targetMaster, err := mz.wr.ts.GetTablet(ctx, target.MasterAlias)
+		targetMain, err := mz.wr.ts.GetTablet(ctx, target.MainAlias)
 		if err != nil {
-			return vterrors.Wrapf(err, "GetTablet(%v) failed", target.MasterAlias)
+			return vterrors.Wrapf(err, "GetTablet(%v) failed", target.MainAlias)
 		}
 		buf := &strings.Builder{}
 		t := template.Must(template.New("").Parse(inserts))
 		input := map[string]string{
 			"keyrange": key.KeyRangeString(target.KeyRange),
-			"dbname":   targetMaster.DbName(),
+			"dbname":   targetMain.DbName(),
 		}
 		if err := t.Execute(buf, input); err != nil {
 			return err
 		}
-		if _, err := mz.wr.TabletManagerClient().VReplicationExec(ctx, targetMaster.Tablet, buf.String()); err != nil {
+		if _, err := mz.wr.TabletManagerClient().VReplicationExec(ctx, targetMain.Tablet, buf.String()); err != nil {
 			return err
 		}
 		return nil
@@ -744,13 +744,13 @@ func (mz *materializer) createStreams(ctx context.Context, inserts string) error
 
 func (mz *materializer) startStreams(ctx context.Context) error {
 	return mz.forAllTargets(func(target *topo.ShardInfo) error {
-		targetMaster, err := mz.wr.ts.GetTablet(ctx, target.MasterAlias)
+		targetMain, err := mz.wr.ts.GetTablet(ctx, target.MainAlias)
 		if err != nil {
-			return vterrors.Wrapf(err, "GetTablet(%v) failed", target.MasterAlias)
+			return vterrors.Wrapf(err, "GetTablet(%v) failed", target.MainAlias)
 		}
-		query := fmt.Sprintf("update _vt.vreplication set state='Running' where db_name=%s and workflow=%s", encodeString(targetMaster.DbName()), encodeString(mz.ms.Workflow))
-		if _, err := mz.wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, query); err != nil {
-			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMaster.Tablet, query)
+		query := fmt.Sprintf("update _vt.vreplication set state='Running' where db_name=%s and workflow=%s", encodeString(targetMain.DbName()), encodeString(mz.ms.Workflow))
+		if _, err := mz.wr.tmc.VReplicationExec(ctx, targetMain.Tablet, query); err != nil {
+			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMain.Tablet, query)
 		}
 		return nil
 	})

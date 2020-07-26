@@ -34,8 +34,8 @@ func init() {
 }
 
 // StatusSummary returns the summary status of vreplication.
-func StatusSummary() (maxSecondsBehindMaster int64, binlogPlayersCount int32) {
-	return globalStats.maxSecondsBehindMaster(), int32(globalStats.numControllers())
+func StatusSummary() (maxSecondsBehindMain int64, binlogPlayersCount int32) {
+	return globalStats.maxSecondsBehindMain(), int32(globalStats.numControllers())
 }
 
 // AddStatusPart adds the vreplication status to the status page.
@@ -57,30 +57,30 @@ type vrStats struct {
 
 func (st *vrStats) register() {
 	stats.NewGaugeFunc("VReplicationStreamCount", "Number of vreplication streams", st.numControllers)
-	stats.NewGaugeFunc("VReplicationSecondsBehindMasterMax", "Max vreplication seconds behind master", st.maxSecondsBehindMaster)
+	stats.NewGaugeFunc("VReplicationSecondsBehindMainMax", "Max vreplication seconds behind main", st.maxSecondsBehindMain)
 	stats.NewGaugesFuncWithMultiLabels(
-		"VReplicationSecondsBehindMaster",
-		"vreplication seconds behind master per stream",
+		"VReplicationSecondsBehindMain",
+		"vreplication seconds behind main per stream",
 		[]string{"counts"},
 		func() map[string]int64 {
 			st.mu.Lock()
 			defer st.mu.Unlock()
 			result := make(map[string]int64, len(st.controllers))
 			for _, ct := range st.controllers {
-				result[fmt.Sprintf("%v", ct.id)] = ct.blpStats.SecondsBehindMaster.Get()
+				result[fmt.Sprintf("%v", ct.id)] = ct.blpStats.SecondsBehindMain.Get()
 			}
 			return result
 		})
 
 	stats.NewCounterFunc(
-		"VReplicationTotalSecondsBehindMaster",
-		"vreplication seconds behind master aggregated across all streams",
+		"VReplicationTotalSecondsBehindMain",
+		"vreplication seconds behind main aggregated across all streams",
 		func() int64 {
 			st.mu.Lock()
 			defer st.mu.Unlock()
 			result := int64(0)
 			for _, ct := range st.controllers {
-				result += ct.blpStats.SecondsBehindMaster.Get()
+				result += ct.blpStats.SecondsBehindMain.Get()
 			}
 			return result
 		})
@@ -126,12 +126,12 @@ func (st *vrStats) numControllers() int64 {
 	return int64(len(st.controllers))
 }
 
-func (st *vrStats) maxSecondsBehindMaster() int64 {
+func (st *vrStats) maxSecondsBehindMain() int64 {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	max := int64(0)
 	for _, ct := range st.controllers {
-		if cur := ct.blpStats.SecondsBehindMaster.Get(); cur > max {
+		if cur := ct.blpStats.SecondsBehindMain.Get(); cur > max {
 			max = cur
 		}
 	}
@@ -153,7 +153,7 @@ func (st *vrStats) status() *EngineStatus {
 			Source:              ct.source.String(),
 			StopPosition:        ct.stopPos,
 			LastPosition:        ct.blpStats.LastPosition().String(),
-			SecondsBehindMaster: ct.blpStats.SecondsBehindMaster.Get(),
+			SecondsBehindMain: ct.blpStats.SecondsBehindMain.Get(),
 			Counts:              ct.blpStats.Timings.Counts(),
 			Rates:               ct.blpStats.Rates.Get(),
 			State:               ct.blpStats.State.Get(),
@@ -179,7 +179,7 @@ type ControllerStatus struct {
 	SourceShard         string
 	StopPosition        string
 	LastPosition        string
-	SecondsBehindMaster int64
+	SecondsBehindMain int64
 	Counts              map[string]int64
 	Rates               map[string][]float64
 	State               string
@@ -197,7 +197,7 @@ var vreplicationTemplate = `
     <th>State</th>
     <th>Stop Position</th>
     <th>Last Position</th>
-    <th>Seconds Behind Master</th>
+    <th>Seconds Behind Main</th>
     <th>Counts</th>
     <th>Rates</th>
     <th>Last Message</th>
@@ -209,7 +209,7 @@ var vreplicationTemplate = `
       <td>{{.State}}</td>
       <td>{{.StopPosition}}</td>
       <td>{{.LastPosition}}</td>
-      <td>{{.SecondsBehindMaster}}</td>
+      <td>{{.SecondsBehindMain}}</td>
       <td>{{range $key, $value := .Counts}}<b>{{$key}}</b>: {{$value}}<br>{{end}}</td>
       <td>{{range $key, $values := .Rates}}<b>{{$key}}</b>: {{range $values}}{{.}} {{end}}<br>{{end}}</td>
       <td>{{range $index, $value := .Messages}}{{$value}}<br>{{end}}</td>

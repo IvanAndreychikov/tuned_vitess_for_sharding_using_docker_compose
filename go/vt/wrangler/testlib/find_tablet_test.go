@@ -41,13 +41,13 @@ func TestFindTablet(t *testing.T) {
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, two good slaves
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	goodSlave1 := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
-	goodSlave2 := NewFakeTablet(t, wr, "cell2", 3, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, two good subordinates
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	goodSubordinate1 := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
+	goodSubordinate2 := NewFakeTablet(t, wr, "cell2", 3, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1", "cell2"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1", "cell2"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
@@ -58,24 +58,24 @@ func TestFindTablet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTabletMapForShardByCell should have worked but got: %v", err)
 	}
-	master, err := topotools.FindTabletByHostAndPort(tabletMap, oldMaster.Tablet.Hostname, "vt", oldMaster.Tablet.PortMap["vt"])
-	if err != nil || !topoproto.TabletAliasEqual(master, oldMaster.Tablet.Alias) {
-		t.Fatalf("FindTabletByHostAndPort(master) failed: %v %v", err, master)
+	main, err := topotools.FindTabletByHostAndPort(tabletMap, oldMain.Tablet.Hostname, "vt", oldMain.Tablet.PortMap["vt"])
+	if err != nil || !topoproto.TabletAliasEqual(main, oldMain.Tablet.Alias) {
+		t.Fatalf("FindTabletByHostAndPort(main) failed: %v %v", err, main)
 	}
-	slave1, err := topotools.FindTabletByHostAndPort(tabletMap, goodSlave1.Tablet.Hostname, "vt", goodSlave1.Tablet.PortMap["vt"])
-	if err != nil || !topoproto.TabletAliasEqual(slave1, goodSlave1.Tablet.Alias) {
-		t.Fatalf("FindTabletByHostAndPort(slave1) failed: %v %v", err, master)
+	subordinate1, err := topotools.FindTabletByHostAndPort(tabletMap, goodSubordinate1.Tablet.Hostname, "vt", goodSubordinate1.Tablet.PortMap["vt"])
+	if err != nil || !topoproto.TabletAliasEqual(subordinate1, goodSubordinate1.Tablet.Alias) {
+		t.Fatalf("FindTabletByHostAndPort(subordinate1) failed: %v %v", err, main)
 	}
-	slave2, err := topotools.FindTabletByHostAndPort(tabletMap, goodSlave2.Tablet.Hostname, "vt", goodSlave2.Tablet.PortMap["vt"])
+	subordinate2, err := topotools.FindTabletByHostAndPort(tabletMap, goodSubordinate2.Tablet.Hostname, "vt", goodSubordinate2.Tablet.PortMap["vt"])
 	if !topo.IsErrType(err, topo.NoNode) {
-		t.Fatalf("FindTabletByHostAndPort(slave2) worked: %v %v", err, slave2)
+		t.Fatalf("FindTabletByHostAndPort(subordinate2) worked: %v %v", err, subordinate2)
 	}
 
-	// Make sure the master is not exported in other cells
+	// Make sure the main is not exported in other cells
 	tabletMap, _ = ts.GetTabletMapForShardByCell(ctx, "test_keyspace", "0", []string{"cell2"})
-	master, err = topotools.FindTabletByHostAndPort(tabletMap, oldMaster.Tablet.Hostname, "vt", oldMaster.Tablet.PortMap["vt"])
+	main, err = topotools.FindTabletByHostAndPort(tabletMap, oldMain.Tablet.Hostname, "vt", oldMain.Tablet.PortMap["vt"])
 	if !topo.IsErrType(err, topo.NoNode) {
-		t.Fatalf("FindTabletByHostAndPort(master) worked in cell2: %v %v", err, master)
+		t.Fatalf("FindTabletByHostAndPort(main) worked in cell2: %v %v", err, main)
 	}
 
 	// Get tablet map for all cells.  If there were to be failures talking to local cells, this will return the tablet map
@@ -84,9 +84,9 @@ func TestFindTablet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTabletMapForShard should nil but got: %v", err)
 	}
-	master, err = topotools.FindTabletByHostAndPort(tabletMap, oldMaster.Tablet.Hostname, "vt", oldMaster.Tablet.PortMap["vt"])
-	if err != nil || !topoproto.TabletAliasEqual(master, oldMaster.Tablet.Alias) {
-		t.Fatalf("FindTabletByHostAndPort(master) failed: %v %v", err, master)
+	main, err = topotools.FindTabletByHostAndPort(tabletMap, oldMain.Tablet.Hostname, "vt", oldMain.Tablet.PortMap["vt"])
+	if err != nil || !topoproto.TabletAliasEqual(main, oldMain.Tablet.Alias) {
+		t.Fatalf("FindTabletByHostAndPort(main) failed: %v %v", err, main)
 	}
 
 }

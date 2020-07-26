@@ -42,7 +42,7 @@ func TestQueryzHandler(t *testing.T) {
 	sql := "select id from user where id = 1"
 	_, err := executorExec(executor, sql, nil)
 	require.NoError(t, err)
-	result, ok := executor.plans.Get("@master:" + sql)
+	result, ok := executor.plans.Get("@main:" + sql)
 	if !ok {
 		t.Fatalf("couldn't get plan from cache")
 	}
@@ -53,7 +53,7 @@ func TestQueryzHandler(t *testing.T) {
 	sql = "select id from user"
 	_, err = executorExec(executor, sql, nil)
 	require.NoError(t, err)
-	result, ok = executor.plans.Get("@master:" + sql)
+	result, ok = executor.plans.Get("@main:" + sql)
 	if !ok {
 		t.Fatalf("couldn't get plan from cache")
 	}
@@ -66,14 +66,14 @@ func TestQueryzHandler(t *testing.T) {
 		"name": sqltypes.BytesBindVariable([]byte("myname")),
 	})
 	require.NoError(t, err)
-	result, ok = executor.plans.Get("@master:" + sql)
+	result, ok = executor.plans.Get("@main:" + sql)
 	if !ok {
 		t.Fatalf("couldn't get plan from cache")
 	}
 	plan3 := result.(*engine.Plan)
 
 	// vindex insert from above execution
-	result, ok = executor.plans.Get("@master:" + "insert into name_user_map(name, user_id) values(:name0, :user_id0)")
+	result, ok = executor.plans.Get("@main:" + "insert into name_user_map(name, user_id) values(:name0, :user_id0)")
 	if !ok {
 		t.Fatalf("couldn't get plan from cache")
 	}

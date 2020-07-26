@@ -307,7 +307,7 @@ func TestExecutorSetOp(t *testing.T) {
 	for _, tcase := range testcases {
 		t.Run(tcase.in, func(t *testing.T) {
 			sbc1.SetResults([]*sqltypes.Result{{}})
-			session := NewAutocommitSession(masterSession)
+			session := NewAutocommitSession(mainSession)
 			session.TargetString = KsTestUnsharded
 			_, err := executor.Execute(
 				context.Background(),
@@ -324,7 +324,7 @@ func TestExecutorSetOp(t *testing.T) {
 
 func TestExecutorSetMetadata(t *testing.T) {
 	executor, _, _, _ := createExecutorEnv()
-	session := NewSafeSession(&vtgatepb.Session{TargetString: "@master", Autocommit: true})
+	session := NewSafeSession(&vtgatepb.Session{TargetString: "@main", Autocommit: true})
 
 	set := "set @@vitess_metadata.app_keyspace_v1= '1'"
 	_, err := executor.Execute(context.Background(), "TestExecute", session, set, nil)
@@ -336,7 +336,7 @@ func TestExecutorSetMetadata(t *testing.T) {
 	}()
 
 	executor, _, _, _ = createExecutorEnv()
-	session = NewSafeSession(&vtgatepb.Session{TargetString: "@master", Autocommit: true})
+	session = NewSafeSession(&vtgatepb.Session{TargetString: "@main", Autocommit: true})
 
 	set = "set @@vitess_metadata.app_keyspace_v1= '1'"
 	_, err = executor.Execute(context.Background(), "TestExecute", session, set, nil)

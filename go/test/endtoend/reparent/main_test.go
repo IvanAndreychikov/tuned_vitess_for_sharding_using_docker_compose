@@ -62,7 +62,7 @@ var (
 	tablet31981 *cluster.Vttablet
 
 	// Tablets for shard1
-	masterTablet  *cluster.Vttablet
+	mainTablet  *cluster.Vttablet
 	replicaTablet *cluster.Vttablet
 )
 
@@ -102,11 +102,11 @@ func TestMain(m *testing.M) {
 		shard0.Vttablets = []*cluster.Vttablet{tablet62344, tablet62044, tablet41983, tablet31981}
 
 		// Initiate shard1 - required for ranged based reparenting
-		masterTablet = clusterInstance.GetVttabletInstance("replica", 0, "")
+		mainTablet = clusterInstance.GetVttabletInstance("replica", 0, "")
 		replicaTablet = clusterInstance.GetVttabletInstance("replica", 0, "")
 
 		shard1 := &cluster.Shard{Name: shard1Name}
-		shard1.Vttablets = []*cluster.Vttablet{masterTablet, replicaTablet}
+		shard1.Vttablets = []*cluster.Vttablet{mainTablet, replicaTablet}
 
 		clusterInstance.VtTabletExtraArgs = []string{
 			"-lock_tables_timeout", "5s",

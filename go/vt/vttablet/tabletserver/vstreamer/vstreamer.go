@@ -169,7 +169,7 @@ func (vs *vstreamer) Stream() error {
 		return wrapError(err, vs.pos)
 	}
 
-	conn, err := binlog.NewSlaveConnection(vs.cp)
+	conn, err := binlog.NewSubordinateConnection(vs.cp)
 	if err != nil {
 		return wrapError(err, vs.pos)
 	}
@@ -189,7 +189,7 @@ func (vs *vstreamer) currentPosition() (mysql.Position, error) {
 		return mysql.Position{}, err
 	}
 	defer conn.Close()
-	return conn.MasterPosition()
+	return conn.MainPosition()
 }
 
 // parseEvents parses and sends events.
@@ -344,7 +344,7 @@ func (vs *vstreamer) parseEvent(ev mysql.BinlogEvent) ([]*binlogdatapb.VEvent, e
 	// tells us the size of the event header.
 	if vs.format.IsZero() {
 		// The only thing that should come before the FORMAT_DESCRIPTION_EVENT
-		// is a fake ROTATE_EVENT, which the master sends to tell us the name
+		// is a fake ROTATE_EVENT, which the main sends to tell us the name
 		// of the current log file.
 		if ev.IsRotate() {
 			return nil, nil

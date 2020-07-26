@@ -127,20 +127,20 @@ func CheckValues(t *testing.T, vttablet cluster.Vttablet, id uint64, msg string,
 	return isFound
 }
 
-// CheckDestinationMaster performs multiple checks on a destination master.
-func CheckDestinationMaster(t *testing.T, vttablet cluster.Vttablet, sourceShards []string, ci cluster.LocalProcessCluster) {
+// CheckDestinationMain performs multiple checks on a destination main.
+func CheckDestinationMain(t *testing.T, vttablet cluster.Vttablet, sourceShards []string, ci cluster.LocalProcessCluster) {
 	_ = vttablet.VttabletProcess.WaitForBinLogPlayerCount(len(sourceShards))
 	CheckBinlogPlayerVars(t, vttablet, sourceShards, 0)
 	checkStreamHealthEqualsBinlogPlayerVars(t, vttablet, len(sourceShards), ci)
 }
 
 // CheckBinlogPlayerVars Checks the binlog player variables are correctly exported.
-func CheckBinlogPlayerVars(t *testing.T, vttablet cluster.Vttablet, sourceShards []string, secondBehindMaster int64) {
+func CheckBinlogPlayerVars(t *testing.T, vttablet cluster.Vttablet, sourceShards []string, secondBehindMain int64) {
 	tabletVars := vttablet.VttabletProcess.GetVars()
 
 	assert.Contains(t, tabletVars, "VReplicationStreamCount")
-	assert.Contains(t, tabletVars, "VReplicationSecondsBehindMasterMax")
-	assert.Contains(t, tabletVars, "VReplicationSecondsBehindMaster")
+	assert.Contains(t, tabletVars, "VReplicationSecondsBehindMainMax")
+	assert.Contains(t, tabletVars, "VReplicationSecondsBehindMain")
 	assert.Contains(t, tabletVars, "VReplicationSource")
 	assert.Contains(t, tabletVars, "VReplicationSourceTablet")
 
@@ -162,17 +162,17 @@ func CheckBinlogPlayerVars(t *testing.T, vttablet cluster.Vttablet, sourceShards
 		assert.Containsf(t, replicationSourceValue, shard, "Source shard is not matched with vReplication shard value")
 	}
 
-	if secondBehindMaster != 0 {
-		secondBehindMaserMaxStr := fmt.Sprintf("%v", reflect.ValueOf(tabletVars["VReplicationSecondsBehindMasterMax"]))
+	if secondBehindMain != 0 {
+		secondBehindMaserMaxStr := fmt.Sprintf("%v", reflect.ValueOf(tabletVars["VReplicationSecondsBehindMainMax"]))
 		secondBehindMaserMax, _ := strconv.ParseFloat(secondBehindMaserMaxStr, 64)
 
-		assert.True(t, secondBehindMaserMax < float64(secondBehindMaster))
+		assert.True(t, secondBehindMaserMax < float64(secondBehindMain))
 
-		replicationSecondBehindMasterObj := reflect.ValueOf(tabletVars["VReplicationSecondsBehindMaster"])
+		replicationSecondBehindMainObj := reflect.ValueOf(tabletVars["VReplicationSecondsBehindMain"])
 		for _, key := range replicationSourceObj.MapKeys() {
-			str := fmt.Sprintf("%v", replicationSecondBehindMasterObj.MapIndex(key))
+			str := fmt.Sprintf("%v", replicationSecondBehindMainObj.MapIndex(key))
 			flt, _ := strconv.ParseFloat(str, 64)
-			assert.True(t, flt < float64(secondBehindMaster))
+			assert.True(t, flt < float64(secondBehindMain))
 		}
 	}
 }
@@ -184,7 +184,7 @@ func checkStreamHealthEqualsBinlogPlayerVars(t *testing.T, vttablet cluster.Vtta
 	streamCountStr := fmt.Sprintf("%v", reflect.ValueOf(tabletVars["VReplicationStreamCount"]))
 	streamCount, _ := strconv.Atoi(streamCountStr)
 
-	secondBehindMaserMaxStr := fmt.Sprintf("%v", reflect.ValueOf(tabletVars["VReplicationSecondsBehindMasterMax"]))
+	secondBehindMaserMaxStr := fmt.Sprintf("%v", reflect.ValueOf(tabletVars["VReplicationSecondsBehindMainMax"]))
 	secondBehindMaserMax, _ := strconv.ParseFloat(secondBehindMaserMaxStr, 64)
 
 	assert.Equal(t, streamCount, count)
@@ -203,7 +203,7 @@ func checkStreamHealthEqualsBinlogPlayerVars(t *testing.T, vttablet cluster.Vtta
 	assert.NotNil(t, streamHealthResponse.RealtimeStats.BinlogPlayersCount)
 
 	assert.Equal(t, streamCount, int(streamHealthResponse.RealtimeStats.BinlogPlayersCount))
-	assert.Equal(t, secondBehindMaserMax, float64(streamHealthResponse.RealtimeStats.SecondsBehindMasterFilteredReplication))
+	assert.Equal(t, secondBehindMaserMax, float64(streamHealthResponse.RealtimeStats.SecondsBehindMainFilteredReplication))
 }
 
 // CheckBinlogServerVars checks the binlog server variables are correctly exported.
@@ -253,7 +253,7 @@ func executeQueryInTransaction(t *testing.T, query string, dbConn *mysql.Conn) {
 }
 
 // ExecuteOnTablet executes a write query on specified vttablet
-// It should always be called with a master tablet for the keyspace/shard
+// It should always be called with a main tablet for the keyspace/shard
 func ExecuteOnTablet(t *testing.T, query string, vttablet cluster.Vttablet, ks string, expectFail bool) {
 	_, _ = vttablet.VttabletProcess.QueryTablet("begin", ks, true)
 	_, err := vttablet.VttabletProcess.QueryTablet(query, ks, true)

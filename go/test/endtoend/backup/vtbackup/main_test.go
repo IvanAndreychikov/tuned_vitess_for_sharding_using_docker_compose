@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	master           *cluster.Vttablet
+	main           *cluster.Vttablet
 	replica1         *cluster.Vttablet
 	replica2         *cluster.Vttablet
 	localCluster     *cluster.LocalProcessCluster
@@ -96,10 +96,10 @@ func TestMain(m *testing.M) {
 		extraArgs := []string{"-db-credentials-file", dbCredentialFile}
 		commonTabletArg = append(commonTabletArg, "-db-credentials-file", dbCredentialFile)
 
-		master = localCluster.GetVttabletInstance("replica", 0, "")
+		main = localCluster.GetVttabletInstance("replica", 0, "")
 		replica1 = localCluster.GetVttabletInstance("replica", 0, "")
 		replica2 = localCluster.GetVttabletInstance("replica", 0, "")
-		shard.Vttablets = []*cluster.Vttablet{master, replica1, replica2}
+		shard.Vttablets = []*cluster.Vttablet{main, replica1, replica2}
 
 		// Start MySql processes
 		var mysqlProcs []*exec.Cmd
@@ -126,7 +126,7 @@ func TestMain(m *testing.M) {
 		}
 
 		// Create database
-		for _, tablet := range []cluster.Vttablet{*master, *replica1} {
+		for _, tablet := range []cluster.Vttablet{*main, *replica1} {
 			if err := tablet.VttabletProcess.CreateDB(keyspaceName); err != nil {
 				return 1, err
 			}

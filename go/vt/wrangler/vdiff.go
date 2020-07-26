@@ -100,7 +100,7 @@ type tableDiffer struct {
 // every tableDiffer. A new result channel gets instantiated
 // for every tableDiffer iteration.
 type shardStreamer struct {
-	master           *topo.TabletInfo
+	main           *topo.TabletInfo
 	tablet           *topodatapb.Tablet
 	position         mysql.Position
 	snapshotPosition string
@@ -154,13 +154,13 @@ func (wr *Wrangler) VDiff(ctx context.Context, targetKeyspace, workflow, sourceC
 	}
 	for shard, source := range ts.sources {
 		df.sources[shard] = &shardStreamer{
-			master: source.master,
+			main: source.main,
 		}
 	}
 	var oneTarget *tsTarget
 	for shard, target := range ts.targets {
 		df.targets[shard] = &shardStreamer{
-			master: target.master,
+			main: target.main,
 		}
 		oneTarget = target
 	}
@@ -169,7 +169,7 @@ func (wr *Wrangler) VDiff(ctx context.Context, targetKeyspace, workflow, sourceC
 		oneFilter = bls.Filter
 		break
 	}
-	schm, err := wr.GetSchema(ctx, oneTarget.master.Alias, nil, nil, false)
+	schm, err := wr.GetSchema(ctx, oneTarget.main.Alias, nil, nil, false)
 	if err != nil {
 		return nil, vterrors.Wrap(err, "GetSchema")
 	}
@@ -475,13 +475,13 @@ func (df *vdiff) stopTargets(ctx context.Context) error {
 	var mu sync.Mutex
 
 	err := df.forAll(df.targets, func(shard string, target *shardStreamer) error {
-		query := fmt.Sprintf("update _vt.vreplication set state='Stopped', message='for vdiff' where db_name=%s and workflow=%s", encodeString(target.master.DbName()), encodeString(df.ts.workflow))
-		_, err := df.ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query)
+		query := fmt.Sprintf("update _vt.vreplication set state='Stopped', message='for vdiff' where db_name=%s and workflow=%s", encodeString(target.main.DbName()), encodeString(df.ts.workflow))
+		_, err := df.ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query)
 		if err != nil {
 			return err
 		}
-		query = fmt.Sprintf("select source, pos from _vt.vreplication where db_name=%s and workflow=%s", encodeString(target.master.DbName()), encodeString(df.ts.workflow))
-		p3qr, err := df.ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query)
+		query = fmt.Sprintf("select source, pos from _vt.vreplication where db_name=%s and workflow=%s", encodeString(target.main.DbName()), encodeString(df.ts.workflow))
+		p3qr, err := df.ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query)
 		if err != nil {
 			return err
 		}
@@ -606,11 +606,11 @@ func (df *vdiff) syncTargets(ctx context.Context, filteredReplicationWaitTime ti
 		bls := target.sources[uid]
 		pos := df.sources[bls.Shard].snapshotPosition
 		query := fmt.Sprintf("update _vt.vreplication set state='Running', stop_pos='%s', message='synchronizing for vdiff' where id=%d", pos, uid)
-		if _, err := df.ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query); err != nil {
+		if _, err := df.ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query); err != nil {
 			return err
 		}
-		if err := df.ts.wr.tmc.VReplicationWaitForPos(waitCtx, target.master.Tablet, int(uid), pos); err != nil {
-			return vterrors.Wrapf(err, "VReplicationWaitForPos for tablet %v", topoproto.TabletAliasString(target.master.Tablet.Alias))
+		if err := df.ts.wr.tmc.VReplicationWaitForPos(waitCtx, target.main.Tablet, int(uid), pos); err != nil {
+			return vterrors.Wrapf(err, "VReplicationWaitForPos for tablet %v", topoproto.TabletAliasString(target.main.Tablet.Alias))
 		}
 		return nil
 	})
@@ -619,7 +619,7 @@ func (df *vdiff) syncTargets(ctx context.Context, filteredReplicationWaitTime ti
 	}
 
 	err = df.forAll(df.targets, func(shard string, target *shardStreamer) error {
-		pos, err := df.ts.wr.tmc.MasterPosition(ctx, target.master.Tablet)
+		pos, err := df.ts.wr.tmc.MainPosition(ctx, target.main.Tablet)
 		if err != nil {
 			return err
 		}
@@ -636,8 +636,8 @@ func (df *vdiff) syncTargets(ctx context.Context, filteredReplicationWaitTime ti
 // restartTargets restarts the stopped target vreplication streams.
 func (df *vdiff) restartTargets(ctx context.Context) error {
 	return df.forAll(df.targets, func(shard string, target *shardStreamer) error {
-		query := fmt.Sprintf("update _vt.vreplication set state='Running', message='', stop_pos='' where db_name=%s and workflow=%s", encodeString(target.master.DbName()), encodeString(df.ts.workflow))
-		_, err := df.ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query)
+		query := fmt.Sprintf("update _vt.vreplication set state='Running', message='', stop_pos='' where db_name=%s and workflow=%s", encodeString(target.main.DbName()), encodeString(df.ts.workflow))
+		_, err := df.ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query)
 		return err
 	})
 }

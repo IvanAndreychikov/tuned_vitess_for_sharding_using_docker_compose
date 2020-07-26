@@ -111,15 +111,15 @@ func (dr *switcherDryRun) changeRouting(ctx context.Context) error {
 	deleteLogs = nil
 	addLogs = nil
 	for _, source := range dr.ts.sources {
-		deleteLogs = append(deleteLogs, fmt.Sprintf("\tShard %s, Tablet %d", source.si.ShardName(), source.si.MasterAlias.Uid))
+		deleteLogs = append(deleteLogs, fmt.Sprintf("\tShard %s, Tablet %d", source.si.ShardName(), source.si.MainAlias.Uid))
 	}
 	for _, target := range dr.ts.targets {
-		addLogs = append(addLogs, fmt.Sprintf("\tShard %s, Tablet %d", target.si.ShardName(), target.si.MasterAlias.Uid))
+		addLogs = append(addLogs, fmt.Sprintf("\tShard %s, Tablet %d", target.si.ShardName(), target.si.MainAlias.Uid))
 	}
 	if len(deleteLogs) > 0 {
-		dr.drLog.Log("IsMasterServing will be set to false for:")
+		dr.drLog.Log("IsMainServing will be set to false for:")
 		dr.drLog.LogSlice(deleteLogs)
-		dr.drLog.Log("IsMasterServing will be set to true for:")
+		dr.drLog.Log("IsMainServing will be set to true for:")
 		dr.drLog.LogSlice(addLogs)
 	}
 	return nil
@@ -129,7 +129,7 @@ func (dr *switcherDryRun) streamMigraterfinalize(ctx context.Context, ts *traffi
 	dr.drLog.Log("SwitchWrites completed, freeze and delete vreplication streams on:")
 	logs := make([]string, 0)
 	for _, t := range ts.targets {
-		logs = append(logs, fmt.Sprintf("\ttablet %d", t.master.Alias.Uid))
+		logs = append(logs, fmt.Sprintf("\ttablet %d", t.main.Alias.Uid))
 	}
 	dr.drLog.LogSlice(logs)
 	return nil
@@ -139,7 +139,7 @@ func (dr *switcherDryRun) startReverseVReplication(ctx context.Context) error {
 	dr.drLog.Log("Start reverse replication streams on:")
 	logs := make([]string, 0)
 	for _, t := range dr.ts.sources {
-		logs = append(logs, fmt.Sprintf("\ttablet %d", t.master.Alias.Uid))
+		logs = append(logs, fmt.Sprintf("\ttablet %d", t.main.Alias.Uid))
 	}
 	dr.drLog.LogSlice(logs)
 	return nil
@@ -171,7 +171,7 @@ func (dr *switcherDryRun) migrateStreams(ctx context.Context, sm *streamMigrater
 		tabletStreams := copyTabletStreams(sm.templates)
 		for _, vrs := range tabletStreams {
 			logs = append(logs, fmt.Sprintf("\t Keyspace %s, Shard %s, Tablet %d, Workflow %s, Id %d, Pos %v, BinLogSource %s",
-				vrs.bls.Keyspace, vrs.bls.Shard, target.master.Alias.Uid, vrs.workflow, vrs.id, mysql.EncodePosition(vrs.pos), vrs.bls))
+				vrs.bls.Keyspace, vrs.bls.Shard, target.main.Alias.Uid, vrs.workflow, vrs.id, mysql.EncodePosition(vrs.pos), vrs.bls))
 		}
 	}
 	if len(logs) > 0 {
@@ -189,7 +189,7 @@ func (dr *switcherDryRun) waitForCatchup(ctx context.Context, filteredReplicatio
 func (dr *switcherDryRun) stopSourceWrites(ctx context.Context) error {
 	logs := make([]string, 0)
 	for _, source := range dr.ts.sources {
-		position, _ := dr.ts.wr.tmc.MasterPosition(ctx, source.master.Tablet)
+		position, _ := dr.ts.wr.tmc.MainPosition(ctx, source.main.Tablet)
 		logs = append(logs, fmt.Sprintf("\tKeyspace %s, Shard %s at Position %s", dr.ts.sourceKeyspace, source.si.ShardName(), position))
 	}
 	if len(logs) > 0 {
@@ -230,7 +230,7 @@ func (dr *switcherDryRun) dropSourceTables(ctx context.Context) error {
 	for _, source := range dr.ts.sources {
 		for _, tableName := range dr.ts.tables {
 			logs = append(logs, fmt.Sprintf("\tKeyspace %s Shard %s DbName %s Tablet %d Table %s",
-				source.master.Keyspace, source.master.Shard, source.master.DbName(), source.master.Alias.Uid, tableName))
+				source.main.Keyspace, source.main.Shard, source.main.DbName(), source.main.Alias.Uid, tableName))
 		}
 	}
 	if len(logs) > 0 {
@@ -254,7 +254,7 @@ func (dr *switcherDryRun) dropSourceShards(ctx context.Context) error {
 		}
 		sort.Strings(tabletsList[si.ShardName()])
 		logs = append(logs, fmt.Sprintf("\tCell %s Keyspace %s Shard\n%s",
-			si.Shard.MasterAlias.Cell, si.Keyspace(), si.ShardName()), strings.Join(tabletsList[si.ShardName()], "\n"))
+			si.Shard.MainAlias.Cell, si.Keyspace(), si.ShardName()), strings.Join(tabletsList[si.ShardName()], "\n"))
 	}
 	if len(logs) > 0 {
 		dr.drLog.Log("Deleting following shards (and all related tablets):")
@@ -273,7 +273,7 @@ func (dr *switcherDryRun) dropTargetVReplicationStreams(ctx context.Context) err
 	logs := make([]string, 0)
 	for _, t := range dr.ts.targets {
 		logs = append(logs, fmt.Sprintf("\tKeyspace %s Shard %s Workflow %s DbName %s Tablet %d",
-			t.si.Keyspace(), t.si.ShardName(), dr.ts.workflow, t.master.DbName(), t.master.Alias.Uid))
+			t.si.Keyspace(), t.si.ShardName(), dr.ts.workflow, t.main.DbName(), t.main.Alias.Uid))
 	}
 	dr.drLog.LogSlice(logs)
 	return nil
@@ -284,7 +284,7 @@ func (dr *switcherDryRun) dropSourceReverseVReplicationStreams(ctx context.Conte
 	logs := make([]string, 0)
 	for _, t := range dr.ts.sources {
 		logs = append(logs, fmt.Sprintf("\tKeyspace %s Shard %s Workflow %s DbName %s Tablet %d",
-			t.si.Keyspace(), t.si.ShardName(), reverseName(dr.ts.workflow), t.master.DbName(), t.master.Alias.Uid))
+			t.si.Keyspace(), t.si.ShardName(), reverseName(dr.ts.workflow), t.main.DbName(), t.main.Alias.Uid))
 	}
 	dr.drLog.LogSlice(logs)
 	return nil
@@ -294,7 +294,7 @@ func (dr *switcherDryRun) freezeTargetVReplication(ctx context.Context) error {
 	logs := make([]string, 0)
 	for _, target := range dr.ts.targets {
 		logs = append(logs, fmt.Sprintf("\tKeyspace %s, Shard %s, Tablet %d, Workflow %s, DbName %s",
-			target.master.Keyspace, target.master.Shard, target.master.Alias.Uid, dr.ts.workflow, target.master.DbName()))
+			target.main.Keyspace, target.main.Shard, target.main.Alias.Uid, dr.ts.workflow, target.main.DbName()))
 	}
 	if len(logs) > 0 {
 		dr.drLog.Log("Mark vreplication streams frozen on:")
@@ -306,7 +306,7 @@ func (dr *switcherDryRun) freezeTargetVReplication(ctx context.Context) error {
 func (dr *switcherDryRun) dropSourceBlacklistedTables(ctx context.Context) error {
 	logs := make([]string, 0)
 	for _, si := range dr.ts.sourceShards() {
-		logs = append(logs, fmt.Sprintf("\tKeyspace %s Shard %s Tablet %d", si.Keyspace(), si.ShardName(), si.MasterAlias.Uid))
+		logs = append(logs, fmt.Sprintf("\tKeyspace %s Shard %s Tablet %d", si.Keyspace(), si.ShardName(), si.MainAlias.Uid))
 	}
 	if len(logs) > 0 {
 		dr.drLog.Log(fmt.Sprintf("Blacklisted tables %s will be removed from:", strings.Join(dr.ts.tables, ",")))

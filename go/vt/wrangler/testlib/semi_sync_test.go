@@ -30,9 +30,9 @@ func init() {
 	flag.Set("enable_semi_sync", "true")
 }
 
-func checkSemiSyncEnabled(t *testing.T, master, replica bool, tablets ...*FakeTablet) {
+func checkSemiSyncEnabled(t *testing.T, main, replica bool, tablets ...*FakeTablet) {
 	for _, tablet := range tablets {
-		assert.Equal(t, master, tablet.FakeMysqlDaemon.SemiSyncMasterEnabled, "%v: SemiSyncMasterEnabled", topoproto.TabletAliasString(tablet.Tablet.Alias))
-		assert.Equal(t, replica, tablet.FakeMysqlDaemon.SemiSyncSlaveEnabled, "%v: SemiSyncSlaveEnabled", topoproto.TabletAliasString(tablet.Tablet.Alias))
+		assert.Equal(t, main, tablet.FakeMysqlDaemon.SemiSyncMainEnabled, "%v: SemiSyncMainEnabled", topoproto.TabletAliasString(tablet.Tablet.Alias))
+		assert.Equal(t, replica, tablet.FakeMysqlDaemon.SemiSyncSubordinateEnabled, "%v: SemiSyncSubordinateEnabled", topoproto.TabletAliasString(tablet.Tablet.Alias))
 	}
 }

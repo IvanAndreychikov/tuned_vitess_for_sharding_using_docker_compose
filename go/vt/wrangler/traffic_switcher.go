@@ -89,7 +89,7 @@ type trafficSwitcher struct {
 // tsTarget contains the metadata for each migration target.
 type tsTarget struct {
 	si       *topo.ShardInfo
-	master   *topo.TabletInfo
+	main   *topo.TabletInfo
 	sources  map[uint32]*binlogdatapb.BinlogSource
 	position string
 }
@@ -97,7 +97,7 @@ type tsTarget struct {
 // tsSource contains the metadata for each migration source.
 type tsSource struct {
 	si        *topo.ShardInfo
-	master    *topo.TabletInfo
+	main    *topo.TabletInfo
 	position  string
 	journaled bool
 }
@@ -399,13 +399,13 @@ func (wr *Wrangler) buildTrafficSwitcher(ctx context.Context, targetKeyspace, wo
 			if err != nil {
 				return nil, err
 			}
-			sourceMaster, err := ts.wr.ts.GetTablet(ctx, sourcesi.MasterAlias)
+			sourceMain, err := ts.wr.ts.GetTablet(ctx, sourcesi.MainAlias)
 			if err != nil {
 				return nil, err
 			}
 			ts.sources[bls.Shard] = &tsSource{
 				si:     sourcesi,
-				master: sourceMaster,
+				main: sourceMain,
 			}
 		}
 	}
@@ -448,15 +448,15 @@ func (wr *Wrangler) buildTargets(ctx context.Context, targetKeyspace, workflow s
 		if err != nil {
 			return nil, false, err
 		}
-		if targetsi.MasterAlias == nil {
+		if targetsi.MainAlias == nil {
 			// This can happen if bad inputs are given.
-			return nil, false, fmt.Errorf("shard %v:%v doesn't have a master set", targetKeyspace, targetShard)
+			return nil, false, fmt.Errorf("shard %v:%v doesn't have a main set", targetKeyspace, targetShard)
 		}
-		targetMaster, err := wr.ts.GetTablet(ctx, targetsi.MasterAlias)
+		targetMain, err := wr.ts.GetTablet(ctx, targetsi.MainAlias)
 		if err != nil {
 			return nil, false, err
 		}
-		p3qr, err := wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, fmt.Sprintf("select id, source, message from _vt.vreplication where workflow=%s and db_name=%s", encodeString(workflow), encodeString(targetMaster.DbName())))
+		p3qr, err := wr.tmc.VReplicationExec(ctx, targetMain.Tablet, fmt.Sprintf("select id, source, message from _vt.vreplication where workflow=%s and db_name=%s", encodeString(workflow), encodeString(targetMain.DbName())))
 		if err != nil {
 			return nil, false, err
 		}
@@ -467,7 +467,7 @@ func (wr *Wrangler) buildTargets(ctx context.Context, targetKeyspace, workflow s
 
 		targets[targetShard] = &tsTarget{
 			si:      targetsi,
-			master:  targetMaster,
+			main:  targetMain,
 			sources: make(map[uint32]*binlogdatapb.BinlogSource),
 		}
 		qr := sqltypes.Proto3ToResult(p3qr)
@@ -656,7 +656,7 @@ func (ts *trafficSwitcher) checkJournals(ctx context.Context) (journalsExist boo
 	var exists bool
 	err = ts.forAllSources(func(source *tsSource) error {
 		statement := fmt.Sprintf("select val from _vt.resharding_journal where id=%v", ts.id)
-		p3qr, err := ts.wr.tmc.VReplicationExec(ctx, source.master.Tablet, statement)
+		p3qr, err := ts.wr.tmc.VReplicationExec(ctx, source.main.Tablet, statement)
 		if err != nil {
 			return err
 		}
@@ -690,7 +690,7 @@ func (ts *trafficSwitcher) stopSourceWrites(ctx context.Context) error {
 	}
 	return ts.forAllSources(func(source *tsSource) error {
 		var err error
-		source.position, err = ts.wr.tmc.MasterPosition(ctx, source.master.Tablet)
+		source.position, err = ts.wr.tmc.MainPosition(ctx, source.main.Tablet)
 		ts.wr.Logger().Infof("Position for source %v:%v: %v", ts.sourceKeyspace, source.si.ShardName(), source.position)
 		return err
 	})
@@ -703,7 +703,7 @@ func (ts *trafficSwitcher) changeTableSourceWrites(ctx context.Context, access a
 		}); err != nil {
 			return err
 		}
-		return ts.wr.tmc.RefreshState(ctx, source.master.Tablet)
+		return ts.wr.tmc.RefreshState(ctx, source.main.Tablet)
 	})
 }
 
@@ -716,11 +716,11 @@ func (ts *trafficSwitcher) waitForCatchup(ctx context.Context, filteredReplicati
 		bls := target.sources[uid]
 		source := ts.sources[bls.Shard]
 		ts.wr.Logger().Infof("waiting for keyspace:shard: %v:%v, position %v", ts.targetKeyspace, target.si.ShardName(), source.position)
-		if err := ts.wr.tmc.VReplicationWaitForPos(ctx, target.master.Tablet, int(uid), source.position); err != nil {
+		if err := ts.wr.tmc.VReplicationWaitForPos(ctx, target.main.Tablet, int(uid), source.position); err != nil {
 			return err
 		}
 		ts.wr.Logger().Infof("position for keyspace:shard: %v:%v reached", ts.targetKeyspace, target.si.ShardName())
-		if _, err := ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, binlogplayer.StopVReplication(uid, "stopped for cutover")); err != nil {
+		if _, err := ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, binlogplayer.StopVReplication(uid, "stopped for cutover")); err != nil {
 			return err
 		}
 
@@ -731,7 +731,7 @@ func (ts *trafficSwitcher) waitForCatchup(ctx context.Context, filteredReplicati
 			return nil
 		}
 		var err error
-		target.position, err = ts.wr.tmc.MasterPosition(ctx, target.master.Tablet)
+		target.position, err = ts.wr.tmc.MainPosition(ctx, target.main.Tablet)
 		ts.wr.Logger().Infof("Position for uid %v: %v", uid, target.position)
 		return err
 	})
@@ -751,8 +751,8 @@ func (ts *trafficSwitcher) cancelMigration(ctx context.Context, sm *streamMigrat
 	sm.cancelMigration(ctx)
 
 	err = ts.forAllTargets(func(target *tsTarget) error {
-		query := fmt.Sprintf("update _vt.vreplication set state='Running', message='' where db_name=%s and workflow=%s", encodeString(target.master.DbName()), encodeString(ts.workflow))
-		_, err := ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query)
+		query := fmt.Sprintf("update _vt.vreplication set state='Running', message='' where db_name=%s and workflow=%s", encodeString(target.main.DbName()), encodeString(ts.workflow))
+		_, err := ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query)
 		return err
 	})
 	if err != nil {
@@ -768,7 +768,7 @@ func (ts *trafficSwitcher) cancelMigration(ctx context.Context, sm *streamMigrat
 func (ts *trafficSwitcher) gatherPositions(ctx context.Context) error {
 	err := ts.forAllSources(func(source *tsSource) error {
 		var err error
-		source.position, err = ts.wr.tmc.MasterPosition(ctx, source.master.Tablet)
+		source.position, err = ts.wr.tmc.MainPosition(ctx, source.main.Tablet)
 		ts.wr.Logger().Infof("Position for source %v:%v: %v", ts.sourceKeyspace, source.si.ShardName(), source.position)
 		return err
 	})
@@ -777,7 +777,7 @@ func (ts *trafficSwitcher) gatherPositions(ctx context.Context) error {
 	}
 	return ts.forAllTargets(func(target *tsTarget) error {
 		var err error
-		target.position, err = ts.wr.tmc.MasterPosition(ctx, target.master.Tablet)
+		target.position, err = ts.wr.tmc.MainPosition(ctx, target.main.Tablet)
 		ts.wr.Logger().Infof("Position for target %v:%v: %v", ts.targetKeyspace, target.si.ShardName(), target.position)
 		return err
 	})
@@ -826,7 +826,7 @@ func (ts *trafficSwitcher) createReverseVReplication(ctx context.Context) error 
 			})
 		}
 
-		_, err := ts.wr.VReplicationExec(ctx, source.master.Alias, binlogplayer.CreateVReplicationState(ts.reverseWorkflow, reverseBls, target.position, binlogplayer.BlpStopped, source.master.DbName()))
+		_, err := ts.wr.VReplicationExec(ctx, source.main.Alias, binlogplayer.CreateVReplicationState(ts.reverseWorkflow, reverseBls, target.position, binlogplayer.BlpStopped, source.main.DbName()))
 		return err
 	})
 	return err
@@ -834,8 +834,8 @@ func (ts *trafficSwitcher) createReverseVReplication(ctx context.Context) error 
 
 func (ts *trafficSwitcher) deleteReverseVReplication(ctx context.Context) error {
 	return ts.forAllSources(func(source *tsSource) error {
-		query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s", encodeString(source.master.DbName()), encodeString(ts.reverseWorkflow))
-		_, err := ts.wr.tmc.VReplicationExec(ctx, source.master.Tablet, query)
+		query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s", encodeString(source.main.DbName()), encodeString(ts.reverseWorkflow))
+		_, err := ts.wr.tmc.VReplicationExec(ctx, source.main.Tablet, query)
 		return err
 	})
 }
@@ -883,8 +883,8 @@ func (ts *trafficSwitcher) createJournals(ctx context.Context, sourceWorkflows [
 		statement := fmt.Sprintf("insert into _vt.resharding_journal "+
 			"(id, db_name, val) "+
 			"values (%v, %v, %v)",
-			ts.id, encodeString(source.master.DbName()), encodeString(journal.String()))
-		if _, err := ts.wr.tmc.VReplicationExec(ctx, source.master.Tablet, statement); err != nil {
+			ts.id, encodeString(source.main.DbName()), encodeString(journal.String()))
+		if _, err := ts.wr.tmc.VReplicationExec(ctx, source.main.Tablet, statement); err != nil {
 			return err
 		}
 		return nil
@@ -905,7 +905,7 @@ func (ts *trafficSwitcher) allowTableTargetWrites(ctx context.Context) error {
 		}); err != nil {
 			return err
 		}
-		return ts.wr.tmc.RefreshState(ctx, target.master.Tablet)
+		return ts.wr.tmc.RefreshState(ctx, target.main.Tablet)
 	})
 }
 
@@ -953,7 +953,7 @@ func (ts *trafficSwitcher) changeTableRouting(ctx context.Context) error {
 func (ts *trafficSwitcher) changeShardRouting(ctx context.Context) error {
 	err := ts.forAllSources(func(source *tsSource) error {
 		_, err := ts.wr.ts.UpdateShardFields(ctx, ts.sourceKeyspace, source.si.ShardName(), func(si *topo.ShardInfo) error {
-			si.IsMasterServing = false
+			si.IsMainServing = false
 			return nil
 		})
 		return err
@@ -963,7 +963,7 @@ func (ts *trafficSwitcher) changeShardRouting(ctx context.Context) error {
 	}
 	err = ts.forAllTargets(func(target *tsTarget) error {
 		_, err := ts.wr.ts.UpdateShardFields(ctx, ts.targetKeyspace, target.si.ShardName(), func(si *topo.ShardInfo) error {
-			si.IsMasterServing = true
+			si.IsMainServing = true
 			return nil
 		})
 		return err
@@ -976,8 +976,8 @@ func (ts *trafficSwitcher) changeShardRouting(ctx context.Context) error {
 
 func (ts *trafficSwitcher) startReverseVReplication(ctx context.Context) error {
 	return ts.forAllSources(func(source *tsSource) error {
-		query := fmt.Sprintf("update _vt.vreplication set state='Running', message='' where db_name=%s", encodeString(source.master.DbName()))
-		_, err := ts.wr.VReplicationExec(ctx, source.master.Alias, query)
+		query := fmt.Sprintf("update _vt.vreplication set state='Running', message='' where db_name=%s", encodeString(source.main.DbName()))
+		_, err := ts.wr.VReplicationExec(ctx, source.main.Alias, query)
 		return err
 	})
 }
@@ -986,7 +986,7 @@ func (ts *trafficSwitcher) changeShardsAccess(ctx context.Context, keyspace stri
 	if err := ts.wr.ts.UpdateDisableQueryService(ctx, ts.sourceKeyspace, shards, topodatapb.TabletType_MASTER, nil, access == disallowWrites /* disable */); err != nil {
 		return err
 	}
-	return ts.wr.refreshMasters(ctx, shards)
+	return ts.wr.refreshMains(ctx, shards)
 }
 
 func (ts *trafficSwitcher) forAllSources(f func(*tsSource) error) error {
@@ -1065,7 +1065,7 @@ func (ts *trafficSwitcher) dropSourceBlacklistedTables(ctx context.Context) erro
 		}); err != nil {
 			return err
 		}
-		return ts.wr.tmc.RefreshState(ctx, source.master.Tablet)
+		return ts.wr.tmc.RefreshState(ctx, source.main.Tablet)
 	})
 }
 
@@ -1079,7 +1079,7 @@ func doValidateWorkflowHasCompleted(ctx context.Context, ts *trafficSwitcher) er
 	if ts.migrationType == binlogdatapb.MigrationType_SHARDS {
 		_ = ts.forAllSources(func(source *tsSource) error {
 			wg.Add(1)
-			if source.si.IsMasterServing {
+			if source.si.IsMainServing {
 				rec.RecordError(fmt.Errorf(fmt.Sprintf("Shard %s is still serving", source.si.ShardName())))
 			}
 			wg.Done()
@@ -1088,10 +1088,10 @@ func doValidateWorkflowHasCompleted(ctx context.Context, ts *trafficSwitcher) er
 	} else {
 		_ = ts.forAllTargets(func(target *tsTarget) error {
 			wg.Add(1)
-			query := fmt.Sprintf("select 1 from _vt.vreplication where db_name='%s' and workflow='%s' and message!='FROZEN'", target.master.DbName(), ts.workflow)
-			rs, _ := ts.wr.VReplicationExec(ctx, target.master.Alias, query)
+			query := fmt.Sprintf("select 1 from _vt.vreplication where db_name='%s' and workflow='%s' and message!='FROZEN'", target.main.DbName(), ts.workflow)
+			rs, _ := ts.wr.VReplicationExec(ctx, target.main.Alias, query)
 			if len(rs.Rows) > 0 {
-				rec.RecordError(fmt.Errorf("vreplication streams are not frozen on tablet %d", target.master.Alias.Uid))
+				rec.RecordError(fmt.Errorf("vreplication streams are not frozen on tablet %d", target.main.Alias.Uid))
 			}
 			wg.Done()
 			return nil
@@ -1125,14 +1125,14 @@ func doValidateWorkflowHasCompleted(ctx context.Context, ts *trafficSwitcher) er
 func (ts *trafficSwitcher) dropSourceTables(ctx context.Context) error {
 	return ts.forAllSources(func(source *tsSource) error {
 		for _, tableName := range ts.tables {
-			ts.wr.Logger().Infof("Dropping table %s.%s\n", source.master.DbName(), tableName)
-			query := fmt.Sprintf("drop table %s.%s", source.master.DbName(), tableName)
-			_, err := ts.wr.ExecuteFetchAsDba(ctx, source.master.Alias, query, 1, false, true)
+			ts.wr.Logger().Infof("Dropping table %s.%s\n", source.main.DbName(), tableName)
+			query := fmt.Sprintf("drop table %s.%s", source.main.DbName(), tableName)
+			_, err := ts.wr.ExecuteFetchAsDba(ctx, source.main.Alias, query, 1, false, true)
 			if err != nil {
 				ts.wr.Logger().Errorf("Error dropping table %s: %v", tableName, err)
 				return err
 			}
-			ts.wr.Logger().Infof("Dropped table %s.%s\n", source.master.DbName(), tableName)
+			ts.wr.Logger().Infof("Dropped table %s.%s\n", source.main.DbName(), tableName)
 
 		}
 		return nil
@@ -1156,9 +1156,9 @@ func (ts *trafficSwitcher) freezeTargetVReplication(ctx context.Context) error {
 	// Mark target streams as frozen before deleting. If SwitchWrites gets
 	// re-invoked after a freeze, it will skip all the previous steps
 	err := ts.forAllTargets(func(target *tsTarget) error {
-		ts.wr.Logger().Infof("Marking target streams frozen for workflow %s db_name %s", ts.workflow, target.master.DbName())
-		query := fmt.Sprintf("update _vt.vreplication set message = '%s' where db_name=%s and workflow=%s", frozenStr, encodeString(target.master.DbName()), encodeString(ts.workflow))
-		_, err := ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query)
+		ts.wr.Logger().Infof("Marking target streams frozen for workflow %s db_name %s", ts.workflow, target.main.DbName())
+		query := fmt.Sprintf("update _vt.vreplication set message = '%s' where db_name=%s and workflow=%s", frozenStr, encodeString(target.main.DbName()), encodeString(ts.workflow))
+		_, err := ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query)
 		return err
 	})
 	if err != nil {
@@ -1169,19 +1169,19 @@ func (ts *trafficSwitcher) freezeTargetVReplication(ctx context.Context) error {
 
 func (ts *trafficSwitcher) dropTargetVReplicationStreams(ctx context.Context) error {
 	return ts.forAllTargets(func(target *tsTarget) error {
-		ts.wr.Logger().Infof("Deleting target streams for workflow %s db_name %s", ts.workflow, target.master.DbName())
-		query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s", encodeString(target.master.DbName()), encodeString(ts.workflow))
-		_, err := ts.wr.tmc.VReplicationExec(ctx, target.master.Tablet, query)
+		ts.wr.Logger().Infof("Deleting target streams for workflow %s db_name %s", ts.workflow, target.main.DbName())
+		query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s", encodeString(target.main.DbName()), encodeString(ts.workflow))
+		_, err := ts.wr.tmc.VReplicationExec(ctx, target.main.Tablet, query)
 		return err
 	})
 }
 
 func (ts *trafficSwitcher) dropSourceReverseVReplicationStreams(ctx context.Context) error {
 	return ts.forAllSources(func(source *tsSource) error {
-		ts.wr.Logger().Infof("Deleting reverse streams for workflow %s db_name %s", ts.workflow, source.master.DbName())
+		ts.wr.Logger().Infof("Deleting reverse streams for workflow %s db_name %s", ts.workflow, source.main.DbName())
 		query := fmt.Sprintf("delete from _vt.vreplication where db_name=%s and workflow=%s",
-			encodeString(source.master.DbName()), encodeString(reverseName(ts.workflow)))
-		_, err := ts.wr.tmc.VReplicationExec(ctx, source.master.Tablet, query)
+			encodeString(source.main.DbName()), encodeString(reverseName(ts.workflow)))
+		_, err := ts.wr.tmc.VReplicationExec(ctx, source.main.Tablet, query)
 		return err
 	})
 }

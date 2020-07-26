@@ -304,7 +304,7 @@ func TestPlanExecutorSetSystemVar(t *testing.T) {
 func TestPlanExecutorSetMetadata(t *testing.T) {
 	t.Skip("planning for vitess metadata is not supported yet")
 	executor, _, _, _ := createExecutorEnvUsing(planAllTheThings)
-	session := NewSafeSession(&vtgatepb.Session{TargetString: "@master", Autocommit: true})
+	session := NewSafeSession(&vtgatepb.Session{TargetString: "@main", Autocommit: true})
 
 	set := "set @@vitess_metadata.app_keyspace_v1= '1'"
 	_, err := executor.Execute(context.Background(), "TestExecute", session, set, nil)
@@ -316,7 +316,7 @@ func TestPlanExecutorSetMetadata(t *testing.T) {
 	}()
 
 	executor, _, _, _ = createExecutorEnvUsing(planAllTheThings)
-	session = NewSafeSession(&vtgatepb.Session{TargetString: "@master", Autocommit: true})
+	session = NewSafeSession(&vtgatepb.Session{TargetString: "@main", Autocommit: true})
 
 	set = "set @@vitess_metadata.app_keyspace_v1= '1'"
 	_, err = executor.Execute(context.Background(), "TestExecute", session, set, nil)
@@ -370,13 +370,13 @@ func TestSetUDVFromTabletInput(t *testing.T) {
 		),
 	})
 
-	masterSession.TargetString = "TestExecutor"
+	mainSession.TargetString = "TestExecutor"
 	defer func() {
-		masterSession.TargetString = ""
+		mainSession.TargetString = ""
 	}()
 	_, err := executorExec(executor, "set @foo = concat('a','b','c')", nil)
 	require.NoError(t, err)
 
 	want := map[string]*querypb.BindVariable{"foo": sqltypes.StringBindVariable("abc")}
-	utils.MustMatch(t, want, masterSession.UserDefinedVariables, "")
+	utils.MustMatch(t, want, mainSession.UserDefinedVariables, "")
 }

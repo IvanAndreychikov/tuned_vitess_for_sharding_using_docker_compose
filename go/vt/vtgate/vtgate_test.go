@@ -43,8 +43,8 @@ var executeOptions = &querypb.ExecuteOptions{
 	IncludedFields: querypb.ExecuteOptions_TYPE_ONLY,
 }
 
-var masterSession = &vtgatepb.Session{
-	TargetString: "@master",
+var mainSession = &vtgatepb.Session{
+	TargetString: "@main",
 }
 
 func init() {
@@ -89,7 +89,7 @@ func TestVTGateExecute(t *testing.T) {
 		context.Background(),
 		&vtgatepb.Session{
 			Autocommit:   true,
-			TargetString: "@master",
+			TargetString: "@main",
 			Options:      executeOptions,
 		},
 		"select id from t1",
@@ -145,7 +145,7 @@ func TestVTGateExecuteWithKeyspaceShard(t *testing.T) {
 	_, qr, err = rpcVTGate.Execute(
 		context.Background(),
 		&vtgatepb.Session{
-			TargetString: KsTestUnsharded + ":0@master",
+			TargetString: KsTestUnsharded + ":0@main",
 		},
 		"select id from none",
 		nil,
@@ -161,12 +161,12 @@ func TestVTGateExecuteWithKeyspaceShard(t *testing.T) {
 	_, _, err = rpcVTGate.Execute(
 		context.Background(),
 		&vtgatepb.Session{
-			TargetString: KsTestUnsharded + ":noshard@master",
+			TargetString: KsTestUnsharded + ":noshard@main",
 		},
 		"select id from none",
 		nil,
 	)
-	want = "TestUnsharded.noshard.master: no valid tablet"
+	want = "TestUnsharded.noshard.main: no valid tablet"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("Execute: %v, want %s", err, want)
 	}
@@ -182,7 +182,7 @@ func TestVTGateStreamExecute(t *testing.T) {
 	err := rpcVTGate.StreamExecute(
 		context.Background(),
 		&vtgatepb.Session{
-			TargetString: "@master",
+			TargetString: "@main",
 			Options:      executeOptions,
 		},
 		"select id from t1",
@@ -258,7 +258,7 @@ func testErrorPropagation(t *testing.T, sbcs []*sandboxconn.SandboxConn, before 
 	}
 	_, _, err := rpcVTGate.Execute(
 		context.Background(),
-		masterSession,
+		mainSession,
 		"select id from t1",
 		nil,
 	)
@@ -280,7 +280,7 @@ func testErrorPropagation(t *testing.T, sbcs []*sandboxconn.SandboxConn, before 
 	}
 	err = rpcVTGate.StreamExecute(
 		context.Background(),
-		masterSession,
+		mainSession,
 		"select id from t1",
 		nil,
 		func(r *sqltypes.Result) error {
@@ -301,7 +301,7 @@ func testErrorPropagation(t *testing.T, sbcs []*sandboxconn.SandboxConn, before 
 }
 
 // TestErrorPropagation tests an error returned by sandboxconn is
-// properly propagated through vtgate layers.  We need both a master
+// properly propagated through vtgate layers.  We need both a main
 // tablet and a rdonly tablet because we don't control the routing of
 // Commit.
 func TestErrorPropagation(t *testing.T) {

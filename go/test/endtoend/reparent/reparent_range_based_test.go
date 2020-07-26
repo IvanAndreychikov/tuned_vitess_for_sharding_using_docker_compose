@@ -31,7 +31,7 @@ func TestReparentGracefulRangeBased(t *testing.T) {
 	defer cluster.PanicHandler(t)
 	ctx := context.Background()
 
-	for _, tablet := range []cluster.Vttablet{*masterTablet, *replicaTablet} {
+	for _, tablet := range []cluster.Vttablet{*mainTablet, *replicaTablet} {
 		// create database
 		err := tablet.VttabletProcess.CreateDB(keyspaceName)
 		require.Nil(t, err)
@@ -43,23 +43,23 @@ func TestReparentGracefulRangeBased(t *testing.T) {
 		require.Nil(t, err)
 	}
 
-	for _, tablet := range []cluster.Vttablet{*masterTablet, *replicaTablet} {
+	for _, tablet := range []cluster.Vttablet{*mainTablet, *replicaTablet} {
 		err := tablet.VttabletProcess.WaitForTabletTypes([]string{"SERVING", "NOT_SERVING"})
 		require.Nil(t, err)
 	}
 
 	// Force the replica to reparent assuming that all the datasets are identical.
-	err := clusterInstance.VtctlclientProcess.ExecuteCommand("InitShardMaster",
-		"-force", fmt.Sprintf("%s/%s", keyspaceName, shard1Name), masterTablet.Alias)
+	err := clusterInstance.VtctlclientProcess.ExecuteCommand("InitShardMain",
+		"-force", fmt.Sprintf("%s/%s", keyspaceName, shard1Name), mainTablet.Alias)
 	require.Nil(t, err)
 
 	// Validate topology
 	validateTopology(t, true)
 
 	// create Tables
-	runSQL(ctx, t, sqlSchema, masterTablet)
+	runSQL(ctx, t, sqlSchema, mainTablet)
 
-	checkMasterTablet(t, masterTablet)
+	checkMainTablet(t, mainTablet)
 
 	validateTopology(t, false)
 
@@ -71,24 +71,24 @@ func TestReparentGracefulRangeBased(t *testing.T) {
 	if strArray[len(strArray)-1] == "" {
 		strArray = strArray[:len(strArray)-1] // Truncate slice, remove empty line
 	}
-	assert.Equal(t, 2, len(strArray))         // one master, one slave
-	assert.Contains(t, strArray[0], "master") // master first
+	assert.Equal(t, 2, len(strArray))         // one main, one subordinate
+	assert.Contains(t, strArray[0], "main") // main first
 
 	// Perform a graceful reparent operation
 	err = clusterInstance.VtctlclientProcess.ExecuteCommand(
 		"PlannedReparentShard",
 		"-keyspace_shard", fmt.Sprintf("%s/%s", keyspaceName, shard1Name),
-		"-new_master", replicaTablet.Alias)
+		"-new_main", replicaTablet.Alias)
 	require.Nil(t, err)
 
 	// Validate topology
 	validateTopology(t, false)
 
-	checkMasterTablet(t, replicaTablet)
+	checkMainTablet(t, replicaTablet)
 
-	// insert data into the new master, check the connected replica work
+	// insert data into the new main, check the connected replica work
 	insertSQL := fmt.Sprintf(insertSQL, 1, 1)
 	runSQL(ctx, t, insertSQL, replicaTablet)
-	err = checkInsertedValues(ctx, t, masterTablet, 1)
+	err = checkInsertedValues(ctx, t, mainTablet, 1)
 	require.Nil(t, err)
 }

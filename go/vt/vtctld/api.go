@@ -73,7 +73,7 @@ type TabletWithURL struct {
 	Tags                map[string]string       `json:"tags,omitempty"`
 	MysqlHostname       string                  `json:"mysql_hostname,omitempty"`
 	MysqlPort           int32                   `json:"mysql_port,omitempty"`
-	MasterTermStartTime *vttime.Time            `json:"master_term_start_time,omitempty"`
+	MainTermStartTime *vttime.Time            `json:"main_term_start_time,omitempty"`
 	URL                 string                  `json:"url,omitempty"`
 }
 
@@ -414,7 +414,7 @@ func initAPI(ctx context.Context, ts *topo.Server, actions *ActionRepository, re
 			Tags:                t.Tags,
 			MysqlHostname:       t.MysqlHostname,
 			MysqlPort:           t.MysqlPort,
-			MasterTermStartTime: t.MasterTermStartTime,
+			MainTermStartTime: t.MainTermStartTime,
 		}
 		if *proxyTablets {
 			tab.URL = fmt.Sprintf("/vttablet/%s-%d/debug/status", t.Alias.Cell, t.Alias.Uid)
@@ -570,13 +570,13 @@ func initAPI(ctx context.Context, ts *topo.Server, actions *ActionRepository, re
 		}
 		req := struct {
 			Keyspace, SQL       string
-			SlaveTimeoutSeconds int
+			SubordinateTimeoutSeconds int
 		}{}
 		if err := unmarshalRequest(r, &req); err != nil {
 			return fmt.Errorf("can't unmarshal request: %v", err)
 		}
-		if req.SlaveTimeoutSeconds <= 0 {
-			req.SlaveTimeoutSeconds = 10
+		if req.SubordinateTimeoutSeconds <= 0 {
+			req.SubordinateTimeoutSeconds = 10
 		}
 
 		logger := logutil.NewCallbackLogger(func(ev *logutilpb.Event) {
@@ -585,7 +585,7 @@ func initAPI(ctx context.Context, ts *topo.Server, actions *ActionRepository, re
 		wr := wrangler.New(logger, ts, tmClient)
 
 		executor := schemamanager.NewTabletExecutor(
-			wr, time.Duration(req.SlaveTimeoutSeconds)*time.Second)
+			wr, time.Duration(req.SubordinateTimeoutSeconds)*time.Second)
 
 		return schemamanager.Run(ctx,
 			schemamanager.NewUIController(req.SQL, req.Keyspace, w), executor)
