@@ -42,9 +42,9 @@ type resharder struct {
 	keyspace      string
 	workflow      string
 	sourceShards  []*topo.ShardInfo
-	sourceMasters map[string]*topo.TabletInfo
+	sourceMains map[string]*topo.TabletInfo
 	targetShards  []*topo.ShardInfo
-	targetMasters map[string]*topo.TabletInfo
+	targetMains map[string]*topo.TabletInfo
 	vschema       *vschemapb.Keyspace
 	refStreams    map[string]*refStream
 }
@@ -85,38 +85,38 @@ func (wr *Wrangler) buildResharder(ctx context.Context, keyspace, workflow strin
 		wr:            wr,
 		keyspace:      keyspace,
 		workflow:      workflow,
-		sourceMasters: make(map[string]*topo.TabletInfo),
-		targetMasters: make(map[string]*topo.TabletInfo),
+		sourceMains: make(map[string]*topo.TabletInfo),
+		targetMains: make(map[string]*topo.TabletInfo),
 	}
 	for _, shard := range sources {
 		si, err := wr.ts.GetShard(ctx, keyspace, shard)
 		if err != nil {
 			return nil, vterrors.Wrapf(err, "GetShard(%s) failed", shard)
 		}
-		if !si.IsMasterServing {
+		if !si.IsMainServing {
 			return nil, fmt.Errorf("source shard %v is not in serving state", shard)
 		}
 		rs.sourceShards = append(rs.sourceShards, si)
-		master, err := wr.ts.GetTablet(ctx, si.MasterAlias)
+		main, err := wr.ts.GetTablet(ctx, si.MainAlias)
 		if err != nil {
-			return nil, vterrors.Wrapf(err, "GetTablet(%s) failed", si.MasterAlias)
+			return nil, vterrors.Wrapf(err, "GetTablet(%s) failed", si.MainAlias)
 		}
-		rs.sourceMasters[si.ShardName()] = master
+		rs.sourceMains[si.ShardName()] = main
 	}
 	for _, shard := range targets {
 		si, err := wr.ts.GetShard(ctx, keyspace, shard)
 		if err != nil {
 			return nil, vterrors.Wrapf(err, "GetShard(%s) failed", shard)
 		}
-		if si.IsMasterServing {
+		if si.IsMainServing {
 			return nil, fmt.Errorf("target shard %v is in serving state", shard)
 		}
 		rs.targetShards = append(rs.targetShards, si)
-		master, err := wr.ts.GetTablet(ctx, si.MasterAlias)
+		main, err := wr.ts.GetTablet(ctx, si.MainAlias)
 		if err != nil {
-			return nil, vterrors.Wrapf(err, "GetTablet(%s) failed", si.MasterAlias)
+			return nil, vterrors.Wrapf(err, "GetTablet(%s) failed", si.MainAlias)
 		}
-		rs.targetMasters[si.ShardName()] = master
+		rs.targetMains[si.ShardName()] = main
 	}
 	if err := topotools.ValidateForReshard(rs.sourceShards, rs.targetShards); err != nil {
 		return nil, vterrors.Wrap(err, "ValidateForReshard")
@@ -139,11 +139,11 @@ func (wr *Wrangler) buildResharder(ctx context.Context, keyspace, workflow strin
 
 func (rs *resharder) validateTargets(ctx context.Context) error {
 	err := rs.forAll(rs.targetShards, func(target *topo.ShardInfo) error {
-		targetMaster := rs.targetMasters[target.ShardName()]
-		query := fmt.Sprintf("select 1 from _vt.vreplication where db_name=%s", encodeString(targetMaster.DbName()))
-		p3qr, err := rs.wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, query)
+		targetMain := rs.targetMains[target.ShardName()]
+		query := fmt.Sprintf("select 1 from _vt.vreplication where db_name=%s", encodeString(targetMain.DbName()))
+		p3qr, err := rs.wr.tmc.VReplicationExec(ctx, targetMain.Tablet, query)
 		if err != nil {
-			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMaster.Tablet, query)
+			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMain.Tablet, query)
 		}
 		if len(p3qr.Rows) != 0 {
 			return errors.New("some streams already exist in the target shards, please clean them up and retry the command")
@@ -156,12 +156,12 @@ func (rs *resharder) validateTargets(ctx context.Context) error {
 func (rs *resharder) readRefStreams(ctx context.Context) error {
 	var mu sync.Mutex
 	err := rs.forAll(rs.sourceShards, func(source *topo.ShardInfo) error {
-		sourceMaster := rs.sourceMasters[source.ShardName()]
+		sourceMain := rs.sourceMains[source.ShardName()]
 
-		query := fmt.Sprintf("select workflow, source, cell, tablet_types from _vt.vreplication where db_name=%s", encodeString(sourceMaster.DbName()))
-		p3qr, err := rs.wr.tmc.VReplicationExec(ctx, sourceMaster.Tablet, query)
+		query := fmt.Sprintf("select workflow, source, cell, tablet_types from _vt.vreplication where db_name=%s", encodeString(sourceMain.DbName()))
+		p3qr, err := rs.wr.tmc.VReplicationExec(ctx, sourceMain.Tablet, query)
 		if err != nil {
-			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", sourceMaster.Tablet, query)
+			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", sourceMain.Tablet, query)
 		}
 		qr := sqltypes.Proto3ToResult(p3qr)
 
@@ -258,7 +258,7 @@ func (rs *resharder) identifyRuleType(rule *binlogdatapb.Rule) (int, error) {
 }
 
 func (rs *resharder) copySchema(ctx context.Context) error {
-	oneSource := rs.sourceShards[0].MasterAlias
+	oneSource := rs.sourceShards[0].MainAlias
 	err := rs.forAll(rs.targetShards, func(target *topo.ShardInfo) error {
 		return rs.wr.CopySchemaShard(ctx, oneSource, []string{"/.*"}, nil, false, rs.keyspace, target.ShardName(), 1*time.Second, false)
 	})
@@ -277,9 +277,9 @@ func (rs *resharder) createStreams(ctx context.Context) error {
 	}
 
 	err := rs.forAll(rs.targetShards, func(target *topo.ShardInfo) error {
-		targetMaster := rs.targetMasters[target.ShardName()]
+		targetMain := rs.targetMains[target.ShardName()]
 
-		ig := vreplication.NewInsertGenerator(binlogplayer.BlpStopped, targetMaster.DbName())
+		ig := vreplication.NewInsertGenerator(binlogplayer.BlpStopped, targetMain.DbName())
 
 		// copy excludeRules to prevent data race.
 		copyExcludeRules := append([]*binlogdatapb.Rule(nil), excludeRules...)
@@ -305,8 +305,8 @@ func (rs *resharder) createStreams(ctx context.Context) error {
 			ig.AddRow(rstream.workflow, rstream.bls, "", rstream.cell, rstream.tabletTypes)
 		}
 		query := ig.String()
-		if _, err := rs.wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, query); err != nil {
-			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMaster.Tablet, query)
+		if _, err := rs.wr.tmc.VReplicationExec(ctx, targetMain.Tablet, query); err != nil {
+			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMain.Tablet, query)
 		}
 		return nil
 	})
@@ -316,10 +316,10 @@ func (rs *resharder) createStreams(ctx context.Context) error {
 
 func (rs *resharder) startStreams(ctx context.Context) error {
 	err := rs.forAll(rs.targetShards, func(target *topo.ShardInfo) error {
-		targetMaster := rs.targetMasters[target.ShardName()]
-		query := fmt.Sprintf("update _vt.vreplication set state='Running' where db_name=%s", encodeString(targetMaster.DbName()))
-		if _, err := rs.wr.tmc.VReplicationExec(ctx, targetMaster.Tablet, query); err != nil {
-			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMaster.Tablet, query)
+		targetMain := rs.targetMains[target.ShardName()]
+		query := fmt.Sprintf("update _vt.vreplication set state='Running' where db_name=%s", encodeString(targetMain.DbName()))
+		if _, err := rs.wr.tmc.VReplicationExec(ctx, targetMain.Tablet, query); err != nil {
+			return vterrors.Wrapf(err, "VReplicationExec(%v, %s)", targetMain.Tablet, query)
 		}
 		return nil
 	})

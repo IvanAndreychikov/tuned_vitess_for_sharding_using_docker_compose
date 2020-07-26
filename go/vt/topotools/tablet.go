@@ -26,7 +26,7 @@ topotools is used by wrangler, so it ends up in all tools using
 wrangler (vtctl, vtctld, ...). It is also included by vttablet, so it contains:
 - most of the logic to create a shard / keyspace (tablet's init code)
 - some of the logic to perform a TabletExternallyReparented (RPC call
-  to master vttablet to let it know it's the master).
+  to main vttablet to let it know it's the main).
 
 */
 package topotools
@@ -63,21 +63,21 @@ func ConfigureTabletHook(hk *hook.Hook, tabletAlias *topodatapb.TabletAlias) {
 // transitions need to be forced from time to time.
 //
 // If successful, the updated tablet record is returned.
-func ChangeType(ctx context.Context, ts *topo.Server, tabletAlias *topodatapb.TabletAlias, newType topodatapb.TabletType, masterTermStartTime *vttime.Time) (*topodatapb.Tablet, error) {
+func ChangeType(ctx context.Context, ts *topo.Server, tabletAlias *topodatapb.TabletAlias, newType topodatapb.TabletType, mainTermStartTime *vttime.Time) (*topodatapb.Tablet, error) {
 	var result *topodatapb.Tablet
-	// Always clear out the master timestamp if not master.
+	// Always clear out the main timestamp if not main.
 	if newType != topodatapb.TabletType_MASTER {
-		masterTermStartTime = nil
+		mainTermStartTime = nil
 	}
 	_, err := ts.UpdateTabletFields(ctx, tabletAlias, func(tablet *topodatapb.Tablet) error {
 		// Save the most recent tablet value so we can return it
 		// either if the update succeeds or if no update is needed.
 		result = tablet
-		if tablet.Type == newType && proto.Equal(tablet.MasterTermStartTime, masterTermStartTime) {
+		if tablet.Type == newType && proto.Equal(tablet.MainTermStartTime, mainTermStartTime) {
 			return topo.NewError(topo.NoUpdateNeeded, topoproto.TabletAliasString(tabletAlias))
 		}
 		tablet.Type = newType
-		tablet.MasterTermStartTime = masterTermStartTime
+		tablet.MainTermStartTime = mainTermStartTime
 		return nil
 	})
 	if err != nil {

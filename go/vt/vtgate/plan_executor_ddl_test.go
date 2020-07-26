@@ -118,7 +118,7 @@ func TestPlanExecutorDDL(t *testing.T) {
 
 func TestPlanPassthroughDDL(t *testing.T) {
 	executor, sbc1, sbc2, _ := createExecutorEnvUsing(planAllTheThings)
-	masterSession.TargetString = "TestExecutor"
+	mainSession.TargetString = "TestExecutor"
 
 	_, err := executorExec(executor, "/* leading */ create table passthrough_ddl (\n\tcol bigint default 123\n) /* trailing */", nil)
 	require.NoError(t, err)
@@ -136,7 +136,7 @@ func TestPlanPassthroughDDL(t *testing.T) {
 	sbc2.Queries = nil
 
 	// Force the query to go to only one shard. Normalization doesn't make any difference.
-	masterSession.TargetString = "TestExecutor/40-60"
+	mainSession.TargetString = "TestExecutor/40-60"
 	executor.normalize = true
 
 	_, err = executorExec(executor, "/* leading */ create table passthrough_ddl (\n\tcol bigint default 123\n) /* trailing */", nil)
@@ -146,10 +146,10 @@ func TestPlanPassthroughDDL(t *testing.T) {
 		t.Errorf("sbc2.Queries: %+v, want %+v\n", sbc2.Queries, wantQueries)
 	}
 	sbc2.Queries = nil
-	masterSession.TargetString = ""
+	mainSession.TargetString = ""
 
 	// Use range query
-	masterSession.TargetString = "TestExecutor[-]"
+	mainSession.TargetString = "TestExecutor[-]"
 	executor.normalize = true
 
 	_, err = executorExec(executor, "/* leading */ create table passthrough_ddl (\n\tcol bigint default 123\n) /* trailing */", nil)
@@ -161,5 +161,5 @@ func TestPlanPassthroughDDL(t *testing.T) {
 		t.Errorf("sbc2.Queries: %+v, want %+v\n", sbc2.Queries, wantQueries)
 	}
 	sbc2.Queries = nil
-	masterSession.TargetString = ""
+	mainSession.TargetString = ""
 }

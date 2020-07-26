@@ -37,9 +37,9 @@ import (
 var (
 	clusterInstance     *cluster.LocalProcessCluster
 	tmClient            *tmc.Client
-	masterTabletParams  mysql.ConnParams
+	mainTabletParams  mysql.ConnParams
 	replicaTabletParams mysql.ConnParams
-	masterTablet        cluster.Vttablet
+	mainTablet        cluster.Vttablet
 	replicaTablet       cluster.Vttablet
 	rdonlyTablet        cluster.Vttablet
 	hostname            = "localhost"
@@ -122,8 +122,8 @@ func TestMain(m *testing.M) {
 		// Collect table paths and ports
 		tablets := clusterInstance.Keyspaces[0].Shards[0].Vttablets
 		for _, tablet := range tablets {
-			if tablet.Type == "master" {
-				masterTablet = *tablet
+			if tablet.Type == "main" {
+				mainTablet = *tablet
 			} else if tablet.Type != "rdonly" {
 				replicaTablet = *tablet
 			} else {
@@ -132,10 +132,10 @@ func TestMain(m *testing.M) {
 		}
 
 		// Set mysql tablet params
-		masterTabletParams = mysql.ConnParams{
+		mainTabletParams = mysql.ConnParams{
 			Uname:      username,
 			DbName:     dbName,
-			UnixSocket: path.Join(os.Getenv("VTDATAROOT"), fmt.Sprintf("/vt_%010d/mysql.sock", masterTablet.TabletUID)),
+			UnixSocket: path.Join(os.Getenv("VTDATAROOT"), fmt.Sprintf("/vt_%010d/mysql.sock", mainTablet.TabletUID)),
 		}
 		replicaTabletParams = mysql.ConnParams{
 			Uname:      username,
@@ -168,24 +168,24 @@ func tmcUnlockTables(ctx context.Context, tabletGrpcPort int) error {
 	return tmClient.UnlockTables(ctx, vtablet)
 }
 
-func tmcStopSlave(ctx context.Context, tabletGrpcPort int) error {
+func tmcStopSubordinate(ctx context.Context, tabletGrpcPort int) error {
 	vtablet := getTablet(tabletGrpcPort)
-	return tmClient.StopSlave(ctx, vtablet)
+	return tmClient.StopSubordinate(ctx, vtablet)
 }
 
-func tmcStartSlave(ctx context.Context, tabletGrpcPort int) error {
+func tmcStartSubordinate(ctx context.Context, tabletGrpcPort int) error {
 	vtablet := getTablet(tabletGrpcPort)
-	return tmClient.StartSlave(ctx, vtablet)
+	return tmClient.StartSubordinate(ctx, vtablet)
 }
 
-func tmcMasterPosition(ctx context.Context, tabletGrpcPort int) (string, error) {
+func tmcMainPosition(ctx context.Context, tabletGrpcPort int) (string, error) {
 	vtablet := getTablet(tabletGrpcPort)
-	return tmClient.MasterPosition(ctx, vtablet)
+	return tmClient.MainPosition(ctx, vtablet)
 }
 
-func tmcStartSlaveUntilAfter(ctx context.Context, tabletGrpcPort int, positon string, waittime time.Duration) error {
+func tmcStartSubordinateUntilAfter(ctx context.Context, tabletGrpcPort int, positon string, waittime time.Duration) error {
 	vtablet := getTablet(tabletGrpcPort)
-	return tmClient.StartSlaveUntilAfter(ctx, vtablet, positon, waittime)
+	return tmClient.StartSubordinateUntilAfter(ctx, vtablet, positon, waittime)
 }
 
 func getTablet(tabletGrpcPort int) *tabletpb.Tablet {

@@ -415,22 +415,22 @@ func applyKeyspaceDependentPatches(
 	}
 	tabAlias := 0 + tabletsUsed*100
 	shard := "-"
-	var masterTablets []string
+	var mainTablets []string
 	if tabletsUsed == 0 {
-		masterTablets = append(masterTablets, "101")
+		mainTablets = append(mainTablets, "101")
 	} else {
-		masterTablets = append(masterTablets, strconv.Itoa((tabletsUsed+1)*100+1))
+		mainTablets = append(mainTablets, strconv.Itoa((tabletsUsed+1)*100+1))
 	}
 	interval := int(math.Floor(256 / float64(keyspaceData.shards)))
 
 	for i := 1; i < keyspaceData.shards; i++ {
-		masterTablets = append(masterTablets, strconv.Itoa((i+1)*100+1))
+		mainTablets = append(mainTablets, strconv.Itoa((i+1)*100+1))
 	}
 
-	schemaLoad := generateSchemaload(masterTablets, "", keyspaceData.keyspace, externalDbInfo, opts)
+	schemaLoad := generateSchemaload(mainTablets, "", keyspaceData.keyspace, externalDbInfo, opts)
 	dockerComposeFile = applyInMemoryPatch(dockerComposeFile, schemaLoad)
 
-	// Append Master and Replica Tablets
+	// Append Main and Replica Tablets
 	if keyspaceData.shards < 2 {
 		tabAlias = tabAlias + 100
 		dockerComposeFile = applyTabletPatches(dockerComposeFile, tabAlias, shard, keyspaceData, externalDbInfoMap, opts)
@@ -449,7 +449,7 @@ func applyKeyspaceDependentPatches(
 		}
 	}
 
-	tabletsUsed += len(masterTablets)
+	tabletsUsed += len(mainTablets)
 	return dockerComposeFile
 }
 
@@ -487,7 +487,7 @@ func applyTabletPatches(
 	if val, ok := externalDbInfoMap[keyspaceData.keyspace]; ok {
 		dbInfo = val
 	}
-	dockerComposeFile = applyInMemoryPatch(dockerComposeFile, generateDefaultTablet(tabAlias+1, shard, "master", keyspaceData.keyspace, dbInfo, opts))
+	dockerComposeFile = applyInMemoryPatch(dockerComposeFile, generateDefaultTablet(tabAlias+1, shard, "main", keyspaceData.keyspace, dbInfo, opts))
 	for i := 0; i < keyspaceData.replicaTablets; i++ {
 		dockerComposeFile = applyInMemoryPatch(dockerComposeFile, generateDefaultTablet(tabAlias+2+i, shard, "replica", keyspaceData.keyspace, dbInfo, opts))
 	}

@@ -214,15 +214,15 @@ func (vc *VitessCluster) AddShards(t *testing.T, cell *Cell, keyspace *Keyspace,
 		}
 
 		shard := &Shard{Name: shardName, IsSharded: isSharded, Tablets: make(map[string]*Tablet, 1)}
-		fmt.Println("Adding Master tablet")
-		master, proc, err := vc.AddTablet(t, cell, keyspace, shard, "replica", tabletID+tabletIndex)
+		fmt.Println("Adding Main tablet")
+		main, proc, err := vc.AddTablet(t, cell, keyspace, shard, "replica", tabletID+tabletIndex)
 		if err != nil {
 			t.Fatalf(err.Error())
 		}
-		assert.NotNil(t, master)
+		assert.NotNil(t, main)
 		tabletIndex++
-		master.Vttablet.VreplicationTabletType = "MASTER"
-		tablets = append(tablets, master)
+		main.Vttablet.VreplicationTabletType = "MASTER"
+		tablets = append(tablets, main)
 		dbProcesses = append(dbProcesses, proc)
 		for i := 0; i < numReplicas; i++ {
 			fmt.Println("Adding Replica tablet")
@@ -265,8 +265,8 @@ func (vc *VitessCluster) AddShards(t *testing.T, cell *Cell, keyspace *Keyspace,
 				t.Fatalf(err.Error())
 			}
 		}
-		fmt.Printf("InitShardMaster for %d\n", master.Vttablet.TabletUID)
-		err = vc.VtctlClient.InitShardMaster(keyspace.Name, shardName, cell.Name, master.Vttablet.TabletUID)
+		fmt.Printf("InitShardMain for %d\n", main.Vttablet.TabletUID)
+		err = vc.VtctlClient.InitShardMain(keyspace.Name, shardName, cell.Name, main.Vttablet.TabletUID)
 		if err != nil {
 			t.Fatal(err.Error())
 		}

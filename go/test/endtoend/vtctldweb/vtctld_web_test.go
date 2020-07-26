@@ -70,7 +70,7 @@ func TestShardView(t *testing.T) {
 
 	tabletTypes, tabletUIDs := getShardTablets(t)
 
-	assert.ElementsMatch(t, []string{"master", "replica", "rdonly", "rdonly", "replica", "replica", "rdonly", "rdonly"}, tabletTypes)
+	assert.ElementsMatch(t, []string{"main", "replica", "rdonly", "rdonly", "replica", "replica", "rdonly", "rdonly"}, tabletTypes)
 	assert.ElementsMatch(t, []string{"1", "2", "3", "4", "5", "6", "7", "8"}, tabletUIDs)
 }
 

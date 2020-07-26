@@ -201,7 +201,7 @@ func TestSetTarget(t *testing.T) {
 	}, {
 		vschema:       vschemaWith2KS,
 		targetString:  "ks2@replica",
-		expectedError: "cannot change to a non-master type in the middle of a transaction: REPLICA",
+		expectedError: "cannot change to a non-main type in the middle of a transaction: REPLICA",
 	}}
 
 	for i, tc := range tests {

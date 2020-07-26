@@ -34,13 +34,13 @@ import (
 // Tablet related methods for wrangler
 
 // InitTablet creates or updates a tablet. If no parent is specified
-// in the tablet, and the tablet has a slave type, we will find the
+// in the tablet, and the tablet has a subordinate type, we will find the
 // appropriate parent. If createShardAndKeyspace is true and the
 // parent keyspace or shard don't exist, they will be created.  If
 // allowUpdate is true, and a tablet with the same ID exists, just update it.
-// If a tablet is created as master, and there is already a different
-// master in the shard, allowMasterOverride must be set.
-func (wr *Wrangler) InitTablet(ctx context.Context, tablet *topodatapb.Tablet, allowMasterOverride, createShardAndKeyspace, allowUpdate bool) error {
+// If a tablet is created as main, and there is already a different
+// main in the shard, allowMainOverride must be set.
+func (wr *Wrangler) InitTablet(ctx context.Context, tablet *topodatapb.Tablet, allowMainOverride, createShardAndKeyspace, allowUpdate bool) error {
 	shard, kr, err := topo.ValidateShardName(tablet.Shard)
 	if err != nil {
 		return err
@@ -68,14 +68,14 @@ func (wr *Wrangler) InitTablet(ctx context.Context, tablet *topodatapb.Tablet, a
 	if !key.KeyRangeEqual(si.KeyRange, tablet.KeyRange) {
 		return fmt.Errorf("shard %v/%v has a different KeyRange: %v != %v", tablet.Keyspace, tablet.Shard, si.KeyRange, tablet.KeyRange)
 	}
-	if tablet.Type == topodatapb.TabletType_MASTER && si.HasMaster() && !topoproto.TabletAliasEqual(si.MasterAlias, tablet.Alias) && !allowMasterOverride {
-		return fmt.Errorf("creating this tablet would override old master %v in shard %v/%v, use allow_master_override flag", topoproto.TabletAliasString(si.MasterAlias), tablet.Keyspace, tablet.Shard)
+	if tablet.Type == topodatapb.TabletType_MASTER && si.HasMain() && !topoproto.TabletAliasEqual(si.MainAlias, tablet.Alias) && !allowMainOverride {
+		return fmt.Errorf("creating this tablet would override old main %v in shard %v/%v, use allow_main_override flag", topoproto.TabletAliasString(si.MainAlias), tablet.Keyspace, tablet.Shard)
 	}
 
 	if tablet.Type == topodatapb.TabletType_MASTER {
-		// we update master_term_start_time even if the master hasn't changed
-		// because that means a new master term with the same master
-		tablet.MasterTermStartTime = logutil.TimeToProto(time.Now())
+		// we update main_term_start_time even if the main hasn't changed
+		// because that means a new main term with the same main
+		tablet.MainTermStartTime = logutil.TimeToProto(time.Now())
 	}
 
 	err = wr.ts.CreateTablet(ctx, tablet)
@@ -101,27 +101,27 @@ func (wr *Wrangler) InitTablet(ctx context.Context, tablet *topodatapb.Tablet, a
 }
 
 // DeleteTablet removes a tablet from a shard.
-// - if allowMaster is set, we can Delete a master tablet (and clear
-// its record from the Shard record if it was the master).
-func (wr *Wrangler) DeleteTablet(ctx context.Context, tabletAlias *topodatapb.TabletAlias, allowMaster bool) (err error) {
+// - if allowMain is set, we can Delete a main tablet (and clear
+// its record from the Shard record if it was the main).
+func (wr *Wrangler) DeleteTablet(ctx context.Context, tabletAlias *topodatapb.TabletAlias, allowMain bool) (err error) {
 	// load the tablet, see if we'll need to rebuild
 	ti, err := wr.ts.GetTablet(ctx, tabletAlias)
 	if err != nil {
 		return err
 	}
 
-	wasMaster, err := wr.isMasterTablet(ctx, ti)
+	wasMain, err := wr.isMainTablet(ctx, ti)
 	if err != nil {
 		return err
 	}
 
-	if wasMaster && !allowMaster {
-		return fmt.Errorf("cannot delete tablet %v as it is a master, use allow_master flag", topoproto.TabletAliasString(tabletAlias))
+	if wasMain && !allowMain {
+		return fmt.Errorf("cannot delete tablet %v as it is a main, use allow_main flag", topoproto.TabletAliasString(tabletAlias))
 	}
 
-	// update the Shard object if the master was scrapped.
+	// update the Shard object if the main was scrapped.
 	// we do this before calling DeleteTablet so that the operation can be retried in case of failure.
-	if wasMaster {
+	if wasMain {
 		// We lock the shard to not conflict with reparent operations.
 		ctx, unlock, lockErr := wr.ts.LockShard(ctx, ti.Keyspace, ti.Shard, fmt.Sprintf("DeleteTablet(%v)", topoproto.TabletAliasString(tabletAlias)))
 		if lockErr != nil {
@@ -129,13 +129,13 @@ func (wr *Wrangler) DeleteTablet(ctx context.Context, tabletAlias *topodatapb.Ta
 		}
 		defer unlock(&err)
 
-		// update the shard record's master
+		// update the shard record's main
 		if _, err := wr.ts.UpdateShardFields(ctx, ti.Keyspace, ti.Shard, func(si *topo.ShardInfo) error {
-			if !topoproto.TabletAliasEqual(si.MasterAlias, tabletAlias) {
-				wr.Logger().Warningf("Deleting master %v from shard %v/%v but master in Shard object was %v", topoproto.TabletAliasString(tabletAlias), ti.Keyspace, ti.Shard, topoproto.TabletAliasString(si.MasterAlias))
+			if !topoproto.TabletAliasEqual(si.MainAlias, tabletAlias) {
+				wr.Logger().Warningf("Deleting main %v from shard %v/%v but main in Shard object was %v", topoproto.TabletAliasString(tabletAlias), ti.Keyspace, ti.Shard, topoproto.TabletAliasString(si.MainAlias))
 				return topo.NewError(topo.NoUpdateNeeded, si.Keyspace()+"/"+si.ShardName())
 			}
-			si.MasterAlias = nil
+			si.MainAlias = nil
 			return nil
 		}); err != nil {
 			return err
@@ -150,12 +150,12 @@ func (wr *Wrangler) DeleteTablet(ctx context.Context, tabletAlias *topodatapb.Ta
 	return nil
 }
 
-// ChangeSlaveType changes the type of tablet and recomputes all
+// ChangeSubordinateType changes the type of tablet and recomputes all
 // necessary derived paths in the serving graph, if necessary.
 //
-// Note we don't update the master record in the Shard here, as we
-// can't ChangeType from and out of master anyway.
-func (wr *Wrangler) ChangeSlaveType(ctx context.Context, tabletAlias *topodatapb.TabletAlias, tabletType topodatapb.TabletType) error {
+// Note we don't update the main record in the Shard here, as we
+// can't ChangeType from and out of main anyway.
+func (wr *Wrangler) ChangeSubordinateType(ctx context.Context, tabletAlias *topodatapb.TabletAlias, tabletType topodatapb.TabletType) error {
 	// Load tablet to find endpoint, and keyspace and shard assignment.
 	ti, err := wr.ts.GetTablet(ctx, tabletAlias)
 	if err != nil {
@@ -163,7 +163,7 @@ func (wr *Wrangler) ChangeSlaveType(ctx context.Context, tabletAlias *topodatapb
 	}
 
 	if !topo.IsTrivialTypeChange(ti.Type, tabletType) {
-		return fmt.Errorf("tablet %v type change %v -> %v is not an allowed transition for ChangeSlaveType", tabletAlias, ti.Type, tabletType)
+		return fmt.Errorf("tablet %v type change %v -> %v is not an allowed transition for ChangeSubordinateType", tabletAlias, ti.Type, tabletType)
 	}
 
 	// and ask the tablet to make the change
@@ -209,18 +209,18 @@ func (wr *Wrangler) VReplicationExec(ctx context.Context, tabletAlias *topodatap
 	return wr.tmc.VReplicationExec(ctx, ti.Tablet, query)
 }
 
-// isMasterTablet is a shortcut way to determine whether the current tablet
-// is a master before we allow its tablet record to be deleted. The canonical
-// way to determine the only true master in a shard is to list all the tablets
-// and find the one with the highest MasterTermStartTime among the ones that
-// claim to be master.
+// isMainTablet is a shortcut way to determine whether the current tablet
+// is a main before we allow its tablet record to be deleted. The canonical
+// way to determine the only true main in a shard is to list all the tablets
+// and find the one with the highest MainTermStartTime among the ones that
+// claim to be main.
 // We err on the side of caution here, i.e. we should never return false for
-// a true master tablet, but it is ok to return true for a tablet that isn't
-// the true master. This can occur if someone issues a DeleteTablet while
+// a true main tablet, but it is ok to return true for a tablet that isn't
+// the true main. This can occur if someone issues a DeleteTablet while
 // the system is in transition (a reparenting event is in progress and parts of
 // the topo have not yet been updated).
-func (wr *Wrangler) isMasterTablet(ctx context.Context, ti *topo.TabletInfo) (bool, error) {
-	// Tablet record claims to be non-master, we believe it
+func (wr *Wrangler) isMainTablet(ctx context.Context, ti *topo.TabletInfo) (bool, error) {
+	// Tablet record claims to be non-main, we believe it
 	if ti.Type != topodatapb.TabletType_MASTER {
 		return false, nil
 	}
@@ -229,13 +229,13 @@ func (wr *Wrangler) isMasterTablet(ctx context.Context, ti *topo.TabletInfo) (bo
 		// strictly speaking it isn't correct to return false here, the tablet status is unknown
 		return false, err
 	}
-	// Tablet record claims to be master, and shard record matches
-	if topoproto.TabletAliasEqual(si.MasterAlias, ti.Tablet.Alias) {
+	// Tablet record claims to be main, and shard record matches
+	if topoproto.TabletAliasEqual(si.MainAlias, ti.Tablet.Alias) {
 		return true, nil
 	}
-	// Shard record has another tablet as master, so check MasterTermStartTime
-	// If tablet record's MasterTermStartTime is later than the one in the shard record, then tablet is master
-	tabletMTST := logutil.ProtoToTime(ti.MasterTermStartTime)
-	shardMTST := logutil.ProtoToTime(si.MasterTermStartTime)
+	// Shard record has another tablet as main, so check MainTermStartTime
+	// If tablet record's MainTermStartTime is later than the one in the shard record, then tablet is main
+	tabletMTST := logutil.ProtoToTime(ti.MainTermStartTime)
+	shardMTST := logutil.ProtoToTime(si.MainTermStartTime)
 	return tabletMTST.After(shardMTST), nil
 }

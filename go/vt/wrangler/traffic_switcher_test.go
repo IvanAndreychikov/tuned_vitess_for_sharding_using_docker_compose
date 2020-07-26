@@ -228,11 +228,11 @@ func TestTableMigrateMainflow(t *testing.T) {
 	verifyQueries(t, tme.allDBClients)
 
 	//-------------------------------------------------------------------------------------------------------------------
-	// Can't switch master with SwitchReads.
+	// Can't switch main with SwitchReads.
 	_, err = tme.wr.SwitchReads(ctx, tme.targetKeyspace, "test", topodatapb.TabletType_MASTER, nil, DirectionForward, false)
 	want := "tablet type must be REPLICA or RDONLY: MASTER"
 	if err == nil || err.Error() != want {
-		t.Errorf("SwitchReads(master) err: %v, want %v", err, want)
+		t.Errorf("SwitchReads(main) err: %v, want %v", err, want)
 	}
 	verifyQueries(t, tme.allDBClients)
 
@@ -543,11 +543,11 @@ func TestShardMigrateMainflow(t *testing.T) {
 	verifyQueries(t, tme.allDBClients)
 
 	//-------------------------------------------------------------------------------------------------------------------
-	// Can't switch master with SwitchReads.
+	// Can't switch main with SwitchReads.
 	_, err = tme.wr.SwitchReads(ctx, tme.targetKeyspace, "test", topodatapb.TabletType_MASTER, nil, DirectionForward, false)
 	want := "tablet type must be REPLICA or RDONLY: MASTER"
 	if err == nil || err.Error() != want {
-		t.Errorf("SwitchReads(master) err: %v, want %v", err, want)
+		t.Errorf("SwitchReads(main) err: %v, want %v", err, want)
 	}
 	verifyQueries(t, tme.allDBClients)
 
@@ -572,10 +572,10 @@ func TestShardMigrateMainflow(t *testing.T) {
 	checkServedTypes(t, tme.ts, "ks:40-", 1)
 	checkServedTypes(t, tme.ts, "ks:-80", 2)
 	checkServedTypes(t, tme.ts, "ks:80-", 2)
-	checkIsMasterServing(t, tme.ts, "ks:-40", true)
-	checkIsMasterServing(t, tme.ts, "ks:40-", true)
-	checkIsMasterServing(t, tme.ts, "ks:-80", false)
-	checkIsMasterServing(t, tme.ts, "ks:80-", false)
+	checkIsMainServing(t, tme.ts, "ks:-40", true)
+	checkIsMainServing(t, tme.ts, "ks:40-", true)
+	checkIsMainServing(t, tme.ts, "ks:-80", false)
+	checkIsMainServing(t, tme.ts, "ks:80-", false)
 
 	checkJournals := func() {
 		tme.dbSourceClients[0].addQuery("select val from _vt.resharding_journal where id=6432976123657117097", &sqltypes.Result{}, nil)
@@ -627,10 +627,10 @@ func TestShardMigrateMainflow(t *testing.T) {
 	checkServedTypes(t, tme.ts, "ks:40-", 1)
 	checkServedTypes(t, tme.ts, "ks:-80", 2)
 	checkServedTypes(t, tme.ts, "ks:80-", 2)
-	checkIsMasterServing(t, tme.ts, "ks:-40", true)
-	checkIsMasterServing(t, tme.ts, "ks:40-", true)
-	checkIsMasterServing(t, tme.ts, "ks:-80", false)
-	checkIsMasterServing(t, tme.ts, "ks:80-", false)
+	checkIsMainServing(t, tme.ts, "ks:-40", true)
+	checkIsMainServing(t, tme.ts, "ks:40-", true)
+	checkIsMainServing(t, tme.ts, "ks:-80", false)
+	checkIsMainServing(t, tme.ts, "ks:80-", false)
 
 	//-------------------------------------------------------------------------------------------------------------------
 	// Test successful SwitchWrites.
@@ -720,10 +720,10 @@ func TestShardMigrateMainflow(t *testing.T) {
 	checkServedTypes(t, tme.ts, "ks:-80", 3)
 	checkServedTypes(t, tme.ts, "ks:80-", 3)
 
-	checkIsMasterServing(t, tme.ts, "ks:-40", false)
-	checkIsMasterServing(t, tme.ts, "ks:40-", false)
-	checkIsMasterServing(t, tme.ts, "ks:-80", true)
-	checkIsMasterServing(t, tme.ts, "ks:80-", true)
+	checkIsMainServing(t, tme.ts, "ks:-40", false)
+	checkIsMainServing(t, tme.ts, "ks:40-", false)
+	checkIsMainServing(t, tme.ts, "ks:-80", true)
+	checkIsMainServing(t, tme.ts, "ks:80-", true)
 
 	verifyQueries(t, tme.allDBClients)
 }
@@ -1196,10 +1196,10 @@ func TestShardMigrateJournalExists(t *testing.T) {
 	checkServedTypes(t, tme.ts, "ks:-80", 3)
 	checkServedTypes(t, tme.ts, "ks:80-", 3)
 
-	checkIsMasterServing(t, tme.ts, "ks:-40", false)
-	checkIsMasterServing(t, tme.ts, "ks:40-", false)
-	checkIsMasterServing(t, tme.ts, "ks:-80", true)
-	checkIsMasterServing(t, tme.ts, "ks:80-", true)
+	checkIsMainServing(t, tme.ts, "ks:-40", false)
+	checkIsMainServing(t, tme.ts, "ks:40-", false)
+	checkIsMainServing(t, tme.ts, "ks:-80", true)
+	checkIsMainServing(t, tme.ts, "ks:80-", true)
 
 	verifyQueries(t, tme.allDBClients)
 }
@@ -1713,7 +1713,7 @@ outer:
 	}
 }
 
-func checkIsMasterServing(t *testing.T, ts *topo.Server, keyspaceShard string, want bool) {
+func checkIsMainServing(t *testing.T, ts *topo.Server, keyspaceShard string, want bool) {
 	t.Helper()
 	ctx := context.Background()
 	splits := strings.Split(keyspaceShard, ":")
@@ -1721,8 +1721,8 @@ func checkIsMasterServing(t *testing.T, ts *topo.Server, keyspaceShard string, w
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want != si.IsMasterServing {
-		t.Errorf("IsMasterServing(%v): %v, want %v", keyspaceShard, si.IsMasterServing, want)
+	if want != si.IsMainServing {
+		t.Errorf("IsMainServing(%v): %v, want %v", keyspaceShard, si.IsMainServing, want)
 	}
 }
 

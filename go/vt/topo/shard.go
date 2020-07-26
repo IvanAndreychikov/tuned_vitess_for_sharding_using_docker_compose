@@ -171,19 +171,19 @@ func (si *ShardInfo) Version() Version {
 	return si.version
 }
 
-// HasMaster returns true if the Shard has an assigned Master.
-func (si *ShardInfo) HasMaster() bool {
-	return !topoproto.TabletAliasIsZero(si.Shard.MasterAlias)
+// HasMain returns true if the Shard has an assigned Main.
+func (si *ShardInfo) HasMain() bool {
+	return !topoproto.TabletAliasIsZero(si.Shard.MainAlias)
 }
 
-// GetMasterTermStartTime returns the shard's master term start time as a Time value.
-func (si *ShardInfo) GetMasterTermStartTime() time.Time {
-	return logutil.ProtoToTime(si.Shard.MasterTermStartTime)
+// GetMainTermStartTime returns the shard's main term start time as a Time value.
+func (si *ShardInfo) GetMainTermStartTime() time.Time {
+	return logutil.ProtoToTime(si.Shard.MainTermStartTime)
 }
 
-// SetMasterTermStartTime sets the shard's master term start time as a Time value.
-func (si *ShardInfo) SetMasterTermStartTime(t time.Time) {
-	si.Shard.MasterTermStartTime = logutil.TimeToProto(t)
+// SetMainTermStartTime sets the shard's main term start time as a Time value.
+func (si *ShardInfo) SetMainTermStartTime(t time.Time) {
+	si.Shard.MainTermStartTime = logutil.TimeToProto(t)
 }
 
 // GetShard is a high level function to read shard data.
@@ -290,16 +290,16 @@ func (ts *Server) CreateShard(ctx context.Context, keyspace, shard string) (err 
 		KeyRange: keyRange,
 	}
 
-	// Set master as serving only if its keyrange doesn't overlap
+	// Set main as serving only if its keyrange doesn't overlap
 	// with other shards. This applies to unsharded keyspaces also
-	value.IsMasterServing = true
+	value.IsMainServing = true
 	sis, err := ts.FindAllShardsInKeyspace(ctx, keyspace)
 	if err != nil && !IsErrType(err, NoNode) {
 		return err
 	}
 	for _, si := range sis {
 		if si.KeyRange == nil || key.KeyRangesIntersect(si.KeyRange, keyRange) {
-			value.IsMasterServing = false
+			value.IsMainServing = false
 			break
 		}
 	}
@@ -516,9 +516,9 @@ func (ts *Server) FindAllTabletAliasesInShardByCell(ctx context.Context, keyspac
 	}
 
 	resultAsMap := make(map[string]*topodatapb.TabletAlias)
-	if si.HasMaster() {
-		if InCellList(si.MasterAlias.Cell, cells) {
-			resultAsMap[topoproto.TabletAliasString(si.MasterAlias)] = si.MasterAlias
+	if si.HasMain() {
+		if InCellList(si.MainAlias.Cell, cells) {
+			resultAsMap[topoproto.TabletAliasString(si.MainAlias)] = si.MainAlias
 		}
 	}
 

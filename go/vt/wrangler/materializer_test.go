@@ -1907,7 +1907,7 @@ func TestMaterializerNoDDL(t *testing.T) {
 	assert.EqualError(t, err, "target table t1 does not exist and there is no create ddl defined")
 }
 
-func TestMaterializerNoSourceMaster(t *testing.T) {
+func TestMaterializerNoSourceMain(t *testing.T) {
 	ms := &vtctldatapb.MaterializeSettings{
 		Workflow:       "workflow",
 		SourceKeyspace: "sourceks",
@@ -1950,7 +1950,7 @@ func TestMaterializerNoSourceMaster(t *testing.T) {
 	env.expectValidation()
 
 	err := env.wr.Materialize(context.Background(), ms)
-	assert.EqualError(t, err, "source shard must have a master for copying schema: 0")
+	assert.EqualError(t, err, "source shard must have a main for copying schema: 0")
 }
 
 func TestMaterializerTableMismatch(t *testing.T) {

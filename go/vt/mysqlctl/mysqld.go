@@ -74,8 +74,8 @@ var (
 	mycnfTemplateFile = flag.String("mysqlctl_mycnf_template", "", "template file to use for generating the my.cnf file during server init")
 	socketFile        = flag.String("mysqlctl_socket", "", "socket file to use for remote mysqlctl actions (empty for local actions)")
 
-	// masterConnectRetry is used in 'SET MASTER' commands
-	masterConnectRetry = flag.Duration("master_connect_retry", 10*time.Second, "how long to wait in between slave -> connection attempts. Only precise to the second.")
+	// mainConnectRetry is used in 'SET MASTER' commands
+	mainConnectRetry = flag.Duration("main_connect_retry", 10*time.Second, "how long to wait in between subordinate -> connection attempts. Only precise to the second.")
 
 	versionRegex = regexp.MustCompile(`Ver ([0-9]+)\.([0-9]+)\.([0-9]+)`)
 )
@@ -812,12 +812,12 @@ func (mysqld *Mysqld) getMycnfTemplate() string {
 	myTemplateSource.Write(b)
 
 	// mysql version specific file.
-	// master_{flavor}{major}{minor}.cnf
+	// main_{flavor}{major}{minor}.cnf
 	f := flavorMariaDB
 	if mysqld.capabilities.isMySQLLike() {
 		f = flavorMySQL
 	}
-	fn := fmt.Sprintf("mycnf/master_%s%d%d.cnf", f, mysqld.capabilities.version.Major, mysqld.capabilities.version.Minor)
+	fn := fmt.Sprintf("mycnf/main_%s%d%d.cnf", f, mysqld.capabilities.version.Major, mysqld.capabilities.version.Minor)
 	b, err = riceBox.Bytes(fn)
 	if err != nil {
 		log.Infof("this version of Vitess does not include built-in support for %v %v", mysqld.capabilities.flavor, mysqld.capabilities.version)

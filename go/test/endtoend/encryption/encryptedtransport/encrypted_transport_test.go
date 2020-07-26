@@ -105,10 +105,10 @@ func TestSecureTransport(t *testing.T) {
 	_, err := clusterSetUp(t)
 	require.Nil(t, err, "setup failed")
 
-	masterTablet := *clusterInstance.Keyspaces[0].Shards[0].Vttablets[0]
+	mainTablet := *clusterInstance.Keyspaces[0].Shards[0].Vttablets[0]
 	replicaTablet := *clusterInstance.Keyspaces[0].Shards[0].Vttablets[1]
 
-	for _, tablet := range []cluster.Vttablet{masterTablet, replicaTablet} {
+	for _, tablet := range []cluster.Vttablet{mainTablet, replicaTablet} {
 		err = clusterInstance.VtctlclientProcess.InitTablet(&tablet, clusterInstance.Cell, keyspace, hostname, shardName)
 		require.Nil(t, err)
 		// create database so vttablet can start behaving normally
@@ -136,7 +136,7 @@ func TestSecureTransport(t *testing.T) {
 	require.Nil(t, err)
 
 	// start the tablets
-	for _, tablet := range []cluster.Vttablet{masterTablet, replicaTablet} {
+	for _, tablet := range []cluster.Vttablet{mainTablet, replicaTablet} {
 		tablet.VttabletProcess.ExtraArgs = append(tablet.VttabletProcess.ExtraArgs, "-table-acl-config", tableACLConfigJSON, "-queryserver-config-strict-table-acl")
 		tablet.VttabletProcess.ExtraArgs = append(tablet.VttabletProcess.ExtraArgs, serverExtraArguments("vttablet-server-instance", "vttablet-client")...)
 		err = tablet.VttabletProcess.Setup()
@@ -149,7 +149,7 @@ func TestSecureTransport(t *testing.T) {
 	vtctlClientTmArgs := append(vtctlClientArgs, tmclientExtraArgs("vttablet-client-1")...)
 
 	// Reparenting
-	vtctlClientArgs = append(vtctlClientTmArgs, "InitShardMaster", "-force", "test_keyspace/0", masterTablet.Alias)
+	vtctlClientArgs = append(vtctlClientTmArgs, "InitShardMain", "-force", "test_keyspace/0", mainTablet.Alias)
 	err = clusterInstance.VtctlProcess.ExecuteCommand(vtctlClientArgs...)
 	require.Nil(t, err)
 
@@ -158,7 +158,7 @@ func TestSecureTransport(t *testing.T) {
 	err = clusterInstance.VtctlProcess.ExecuteCommand(vtctlApplySchemaArgs...)
 	require.Nil(t, err)
 
-	for _, tablet := range []cluster.Vttablet{masterTablet, replicaTablet} {
+	for _, tablet := range []cluster.Vttablet{mainTablet, replicaTablet} {
 		var vtctlTabletArgs []string
 		vtctlTabletArgs = append(vtctlTabletArgs, tmclientExtraArgs("vttablet-client-1")...)
 		vtctlTabletArgs = append(vtctlTabletArgs, "RunHealthCheck", tablet.Alias)
@@ -432,7 +432,7 @@ func setSSLInfoEmpty() {
 
 func getSession() *vtgatepb.Session {
 	return &vtgatepb.Session{
-		TargetString: "test_keyspace:0@master",
+		TargetString: "test_keyspace:0@main",
 	}
 }
 

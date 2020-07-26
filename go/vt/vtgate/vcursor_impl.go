@@ -135,9 +135,9 @@ func newVCursorImpl(ctx context.Context, safeSession *SafeSession, marginComment
 		return nil, err
 	}
 
-	// Check for transaction to be only application in master.
+	// Check for transaction to be only application in main.
 	if safeSession.InTransaction() && tabletType != topodatapb.TabletType_MASTER {
-		return nil, vterrors.Errorf(vtrpcpb.Code_INVALID_ARGUMENT, "transactions are supported only for master tablet types, current type: %v", tabletType)
+		return nil, vterrors.Errorf(vtrpcpb.Code_INVALID_ARGUMENT, "transactions are supported only for main tablet types, current type: %v", tabletType)
 	}
 
 	return &vcursorImpl{
@@ -347,7 +347,7 @@ func (vc *vcursorImpl) SetTarget(target string) error {
 	}
 
 	if vc.safeSession.InTransaction() && tabletType != topodatapb.TabletType_MASTER {
-		return vterrors.Errorf(vtrpcpb.Code_INVALID_ARGUMENT, "cannot change to a non-master type in the middle of a transaction: %v", tabletType)
+		return vterrors.Errorf(vtrpcpb.Code_INVALID_ARGUMENT, "cannot change to a non-main type in the middle of a transaction: %v", tabletType)
 	}
 	vc.safeSession.SetTargetString(target)
 	return nil

@@ -44,47 +44,47 @@ func TestRPCTabletExternallyReparented(t *testing.T) {
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master and a new master
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	newMaster := NewFakeTablet(t, wr, "cell2", 1, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main and a new main
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	newMain := NewFakeTablet(t, wr, "cell2", 1, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1", "cell2"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1", "cell2"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
 
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted.
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted.
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
-	// First test: reparent to the same master, make sure it works
+	// First test: reparent to the same main, make sure it works
 	// as expected.
 	tmc := tmclient.NewTabletManagerClient()
-	_, err = ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	_, err = ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
 	waitID := makeWaitID()
-	if err := tmc.TabletExternallyReparented(context.Background(), oldMaster.Tablet, waitID); err != nil {
-		t.Fatalf("TabletExternallyReparented(same master) should have worked: %v", err)
+	if err := tmc.TabletExternallyReparented(context.Background(), oldMain.Tablet, waitID); err != nil {
+		t.Fatalf("TabletExternallyReparented(same main) should have worked: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparented: same master", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparented: same main", waitID)
 
 	// This tests the good case, where everything works as planned
-	t.Logf("TabletExternallyReparented(new master) expecting success")
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	t.Logf("TabletExternallyReparented(new main) expecting success")
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -95,57 +95,57 @@ func TestRPCTabletExternallyReparented(t *testing.T) {
 	waitForExternalReparent(t, "TestRPCTabletExternallyReparented: good case", waitID)
 }
 
-func TestRPCTabletExternallyReparentedSlaveMysql(t *testing.T) {
+func TestRPCTabletExternallyReparentedSubordinateMysql(t *testing.T) {
 	tabletmanager.SetReparentFlags(time.Minute /* finalizeTimeout */)
 
 	ctx := context.Background()
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, two good slaves, one bad slave
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	newMaster := NewFakeTablet(t, wr, "cell2", 1, topodatapb.TabletType_REPLICA, nil)
-	newMaster.FakeMysqlDaemon.ReadOnly = true
-	newMaster.FakeMysqlDaemon.Replicating = true
+	// Create an old main, a new main, two good subordinates, one bad subordinate
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	newMain := NewFakeTablet(t, wr, "cell2", 1, topodatapb.TabletType_REPLICA, nil)
+	newMain.FakeMysqlDaemon.ReadOnly = true
+	newMain.FakeMysqlDaemon.Replicating = true
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1", "cell2"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1", "cell2"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
 
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted.
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted.
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
-	// This tests a bad case: the new designated master is a slave,
+	// This tests a bad case: the new designated main is a subordinate,
 	// but we should do what we're told anyway.
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
 	waitID := makeWaitID()
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
-		t.Fatalf("TabletExternallyReparented(slave) error: %v", err)
+		t.Fatalf("TabletExternallyReparented(subordinate) error: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparented: slave designated as master", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparented: subordinate designated as main", waitID)
 
 }
 
 // TestRPCTabletExternallyReparentedWithDifferentMysqlPort makes sure
-// that if mysql is restarted on the master-elect tablet and has a different
+// that if mysql is restarted on the main-elect tablet and has a different
 // port, we pick it up correctly.
 func TestRPCTabletExternallyReparentedWithDifferentMysqlPort(t *testing.T) {
 	tabletmanager.SetReparentFlags(time.Minute /* finalizeTimeout */)
@@ -154,45 +154,45 @@ func TestRPCTabletExternallyReparentedWithDifferentMysqlPort(t *testing.T) {
 	ts := memorytopo.NewServer("cell1")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, two good slaves, one bad slave
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	newMaster := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
-	goodSlave := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, a new main, two good subordinates, one bad subordinate
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	newMain := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
+	goodSubordinate := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
 	// Now we're restarting mysql on a different port, 3301->3303
 	// but without updating the Tablet record in topology.
 
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted, so we need a MysqlDaemon
-	// that returns no master, and the new port (as returned by mysql)
-	newMaster.FakeMysqlDaemon.MysqlPort = 3303
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted, so we need a MysqlDaemon
+	// that returns no main, and the new port (as returned by mysql)
+	newMain.FakeMysqlDaemon.MysqlPort = 3303
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted and point to the new mysql port
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted and point to the new mysql port
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
-	// On the good slaves, we will respond to
-	// TabletActionSlaveWasRestarted and point to the new mysql port
-	goodSlave.StartActionLoop(t, wr)
-	defer goodSlave.StopActionLoop(t)
+	// On the good subordinates, we will respond to
+	// TabletActionSubordinateWasRestarted and point to the new mysql port
+	goodSubordinate.StartActionLoop(t, wr)
+	defer goodSubordinate.StopActionLoop(t)
 
 	// This tests the good case, where everything works as planned
-	t.Logf("TabletExternallyReparented(new master) expecting success")
+	t.Logf("TabletExternallyReparented(new main) expecting success")
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -203,50 +203,50 @@ func TestRPCTabletExternallyReparentedWithDifferentMysqlPort(t *testing.T) {
 	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedWithDifferentMysqlPort: good case", waitID)
 }
 
-// TestRPCTabletExternallyReparentedContinueOnUnexpectedMaster makes sure
-// that we ignore mysql's master if the flag is set
-func TestRPCTabletExternallyReparentedContinueOnUnexpectedMaster(t *testing.T) {
+// TestRPCTabletExternallyReparentedContinueOnUnexpectedMain makes sure
+// that we ignore mysql's main if the flag is set
+func TestRPCTabletExternallyReparentedContinueOnUnexpectedMain(t *testing.T) {
 	tabletmanager.SetReparentFlags(time.Minute /* finalizeTimeout */)
 
 	ctx := context.Background()
 	ts := memorytopo.NewServer("cell1")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, two good slaves, one bad slave
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	newMaster := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
-	goodSlave := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, a new main, two good subordinates, one bad subordinate
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	newMain := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
+	goodSubordinate := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted, so we need a MysqlDaemon
-	// that returns no master, and the new port (as returned by mysql)
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted, so we need a MysqlDaemon
+	// that returns no main, and the new port (as returned by mysql)
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted and point to a bad host
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted and point to a bad host
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
-	// On the good slave, we will respond to
-	// TabletActionSlaveWasRestarted and point to a bad host
-	goodSlave.StartActionLoop(t, wr)
-	defer goodSlave.StopActionLoop(t)
+	// On the good subordinate, we will respond to
+	// TabletActionSubordinateWasRestarted and point to a bad host
+	goodSubordinate.StartActionLoop(t, wr)
+	defer goodSubordinate.StopActionLoop(t)
 
 	// This tests the good case, where everything works as planned
-	t.Logf("TabletExternallyReparented(new master) expecting success")
+	t.Logf("TabletExternallyReparented(new main) expecting success")
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -254,11 +254,11 @@ func TestRPCTabletExternallyReparentedContinueOnUnexpectedMaster(t *testing.T) {
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
 		t.Fatalf("TabletExternallyReparented(replica) failed: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedContinueOnUnexpectedMaster: good case", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedContinueOnUnexpectedMain: good case", waitID)
 }
 
-func TestRPCTabletExternallyReparentedFailedOldMaster(t *testing.T) {
-	// The 'RefreshState' call on the old master will timeout on
+func TestRPCTabletExternallyReparentedFailedOldMain(t *testing.T) {
+	// The 'RefreshState' call on the old main will timeout on
 	// this value, so it has to be smaller than the 10s of the
 	// wait for the 'finished' state of waitForExternalReparent.
 	tabletmanager.SetReparentFlags(2 * time.Second /* finalizeTimeout */)
@@ -267,39 +267,39 @@ func TestRPCTabletExternallyReparentedFailedOldMaster(t *testing.T) {
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, and a good slave.
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	newMaster := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
-	goodSlave := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, a new main, and a good subordinate.
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	newMain := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
+	goodSubordinate := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
-	// Reparent to a replica, and pretend the old master is not responding.
+	// Reparent to a replica, and pretend the old main is not responding.
 
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted.
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted.
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	// On the old master, we will only get a RefreshState call,
+	// On the old main, we will only get a RefreshState call,
 	// let's just not respond to it at all, and let it timeout.
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
 
-	// On the good slave, we will respond to
-	// TabletActionSlaveWasRestarted.
-	goodSlave.StartActionLoop(t, wr)
-	defer goodSlave.StopActionLoop(t)
+	// On the good subordinate, we will respond to
+	// TabletActionSubordinateWasRestarted.
+	goodSubordinate.StartActionLoop(t, wr)
+	defer goodSubordinate.StopActionLoop(t)
 
 	// The reparent should work as expected here
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -307,84 +307,84 @@ func TestRPCTabletExternallyReparentedFailedOldMaster(t *testing.T) {
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
 		t.Fatalf("TabletExternallyReparented(replica) failed: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedFailedOldMaster: good case", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedFailedOldMain: good case", waitID)
 
-	// check the old master was converted to replica
-	tablet, err := ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	// check the old main was converted to replica
+	tablet, err := ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", oldMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", oldMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_REPLICA {
-		t.Fatalf("old master should be replica but is: %v", tablet.Type)
+		t.Fatalf("old main should be replica but is: %v", tablet.Type)
 	}
 }
 
-func TestRPCTabletExternallyReparentedImpostorMaster(t *testing.T) {
+func TestRPCTabletExternallyReparentedImpostorMain(t *testing.T) {
 	tabletmanager.SetReparentFlags(time.Minute /* finalizeTimeout */)
 
 	ctx := context.Background()
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, and a bad slave.
-	badSlave := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_MASTER, nil)
-	// do this after badSlave so that the shard record has the expected master
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil, ForceInitTablet())
-	newMaster := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, a new main, and a bad subordinate.
+	badSubordinate := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_MASTER, nil)
+	// do this after badSubordinate so that the shard record has the expected main
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil, ForceInitTablet())
+	newMain := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
-	// check the old master is really master
-	tablet, err := ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	// check the old main is really main
+	tablet, err := ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", oldMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", oldMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
-		t.Fatalf("old master should be MASTER but is: %v", tablet.Type)
+		t.Fatalf("old main should be MASTER but is: %v", tablet.Type)
 	}
 
-	// check the impostor also claims to be master
-	tablet, err = ts.GetTablet(ctx, badSlave.Tablet.Alias)
+	// check the impostor also claims to be main
+	tablet, err = ts.GetTablet(ctx, badSubordinate.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", badSlave.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", badSubordinate.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
 		t.Fatalf("impostor should be MASTER but is: %v", tablet.Type)
 	}
 
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted.
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted.
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted.
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted.
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
-	// set this to old master because as soon as badSlave starts, it detects that
-	// there is a master with a later timestamp and demotes itself
-	badSlave.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(oldMaster.Tablet)
-	badSlave.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	// set this to old main because as soon as badSubordinate starts, it detects that
+	// there is a main with a later timestamp and demotes itself
+	badSubordinate.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(oldMain.Tablet)
+	badSubordinate.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the bad slave, we will respond to
-	// TabletActionSlaveWasRestarted.
-	badSlave.StartActionLoop(t, wr)
-	defer badSlave.StopActionLoop(t)
+	// On the bad subordinate, we will respond to
+	// TabletActionSubordinateWasRestarted.
+	badSubordinate.StartActionLoop(t, wr)
+	defer badSubordinate.StopActionLoop(t)
 
 	// The reparent should work as expected here
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -392,90 +392,90 @@ func TestRPCTabletExternallyReparentedImpostorMaster(t *testing.T) {
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
 		t.Fatalf("TabletExternallyReparented(replica) failed: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedImpostorMaster: good case", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedImpostorMain: good case", waitID)
 
-	// check the new master is really master
-	tablet, err = ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	// check the new main is really main
+	tablet, err = ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", newMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", newMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
-		t.Fatalf("new master should be MASTER but is: %v", tablet.Type)
+		t.Fatalf("new main should be MASTER but is: %v", tablet.Type)
 	}
 
-	// check the old master was converted to replica
-	tablet, err = ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	// check the old main was converted to replica
+	tablet, err = ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", oldMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", oldMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_REPLICA {
-		t.Fatalf("old master should be replica but is: %v", tablet.Type)
+		t.Fatalf("old main should be replica but is: %v", tablet.Type)
 	}
 
-	// check the impostor master was converted to replica
-	tablet, err = ts.GetTablet(ctx, badSlave.Tablet.Alias)
+	// check the impostor main was converted to replica
+	tablet, err = ts.GetTablet(ctx, badSubordinate.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", badSlave.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", badSubordinate.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_REPLICA {
-		t.Fatalf("bad slave should be replica but is: %v", tablet.Type)
+		t.Fatalf("bad subordinate should be replica but is: %v", tablet.Type)
 	}
 }
 
-func TestRPCTabletExternallyReparentedFailedImpostorMaster(t *testing.T) {
+func TestRPCTabletExternallyReparentedFailedImpostorMain(t *testing.T) {
 	tabletmanager.SetReparentFlags(2 * time.Second /* finalizeTimeout */)
 
 	ctx := context.Background()
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, and a bad slave.
-	badSlave := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_MASTER, nil)
-	// do this after badSlave so that the shard record has the expected master
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil, ForceInitTablet())
-	newMaster := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, a new main, and a bad subordinate.
+	badSubordinate := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_MASTER, nil)
+	// do this after badSubordinate so that the shard record has the expected main
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil, ForceInitTablet())
+	newMain := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
-	// check the old master is really master
-	tablet, err := ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	// check the old main is really main
+	tablet, err := ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", oldMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", oldMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
-		t.Fatalf("old master should be MASTER but is: %v", tablet.Type)
+		t.Fatalf("old main should be MASTER but is: %v", tablet.Type)
 	}
 
-	// check the impostor also claims to be master
-	tablet, err = ts.GetTablet(ctx, badSlave.Tablet.Alias)
+	// check the impostor also claims to be main
+	tablet, err = ts.GetTablet(ctx, badSubordinate.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", badSlave.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", badSubordinate.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
-		t.Fatalf("old master should be MASTER but is: %v", tablet.Type)
+		t.Fatalf("old main should be MASTER but is: %v", tablet.Type)
 	}
 
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted.
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted.
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted.
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted.
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
 	// The reparent should work as expected here
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -483,33 +483,33 @@ func TestRPCTabletExternallyReparentedFailedImpostorMaster(t *testing.T) {
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
 		t.Fatalf("TabletExternallyReparented(replica) failed: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedImpostorMaster: good case", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedImpostorMain: good case", waitID)
 
-	// check the new master is really master
-	tablet, err = ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	// check the new main is really main
+	tablet, err = ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", newMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", newMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
-		t.Fatalf("new master should be MASTER but is: %v", tablet.Type)
+		t.Fatalf("new main should be MASTER but is: %v", tablet.Type)
 	}
 
-	// check the old master was converted to replica
-	tablet, err = ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	// check the old main was converted to replica
+	tablet, err = ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", oldMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", oldMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_REPLICA {
-		t.Fatalf("old master should be replica but is: %v", tablet.Type)
+		t.Fatalf("old main should be replica but is: %v", tablet.Type)
 	}
 
-	// check the impostor master was converted to replica
-	tablet, err = ts.GetTablet(ctx, badSlave.Tablet.Alias)
+	// check the impostor main was converted to replica
+	tablet, err = ts.GetTablet(ctx, badSubordinate.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", badSlave.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", badSubordinate.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_REPLICA {
-		t.Fatalf("bad slave should be replica but is: %v", tablet.Type)
+		t.Fatalf("bad subordinate should be replica but is: %v", tablet.Type)
 	}
 }
 
@@ -520,39 +520,39 @@ func TestRPCTabletExternallyReparentedRerun(t *testing.T) {
 	ts := memorytopo.NewServer("cell1", "cell2")
 	wr := wrangler.New(logutil.NewConsoleLogger(), ts, tmclient.NewTabletManagerClient())
 
-	// Create an old master, a new master, and a good slave.
-	oldMaster := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
-	newMaster := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
-	goodSlave := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
+	// Create an old main, a new main, and a good subordinate.
+	oldMain := NewFakeTablet(t, wr, "cell1", 0, topodatapb.TabletType_MASTER, nil)
+	newMain := NewFakeTablet(t, wr, "cell1", 1, topodatapb.TabletType_REPLICA, nil)
+	goodSubordinate := NewFakeTablet(t, wr, "cell1", 2, topodatapb.TabletType_REPLICA, nil)
 
 	// Build keyspace graph
-	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMaster.Tablet.Keyspace, []string{"cell1"})
+	err := topotools.RebuildKeyspace(context.Background(), logutil.NewConsoleLogger(), ts, oldMain.Tablet.Keyspace, []string{"cell1"})
 	if err != nil {
 		t.Fatalf("RebuildKeyspaceLocked failed: %v", err)
 	}
-	// On the elected master, we will respond to
-	// TabletActionSlaveWasPromoted.
-	newMaster.StartActionLoop(t, wr)
-	defer newMaster.StopActionLoop(t)
+	// On the elected main, we will respond to
+	// TabletActionSubordinateWasPromoted.
+	newMain.StartActionLoop(t, wr)
+	defer newMain.StopActionLoop(t)
 
-	oldMaster.FakeMysqlDaemon.SetMasterInput = topoproto.MysqlAddr(newMaster.Tablet)
-	oldMaster.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
+	oldMain.FakeMysqlDaemon.SetMainInput = topoproto.MysqlAddr(newMain.Tablet)
+	oldMain.FakeMysqlDaemon.ExpectedExecuteSuperQueryList = []string{
 		"FAKE SET MASTER",
 		"START SLAVE",
 	}
-	// On the old master, we will only respond to
-	// TabletActionSlaveWasRestarted.
-	oldMaster.StartActionLoop(t, wr)
-	defer oldMaster.StopActionLoop(t)
+	// On the old main, we will only respond to
+	// TabletActionSubordinateWasRestarted.
+	oldMain.StartActionLoop(t, wr)
+	defer oldMain.StopActionLoop(t)
 
-	// On the good slave, we will respond to
-	// TabletActionSlaveWasRestarted.
-	goodSlave.StartActionLoop(t, wr)
-	defer goodSlave.StopActionLoop(t)
+	// On the good subordinate, we will respond to
+	// TabletActionSubordinateWasRestarted.
+	goodSubordinate.StartActionLoop(t, wr)
+	defer goodSubordinate.StopActionLoop(t)
 
 	// The reparent should work as expected here
 	tmc := tmclient.NewTabletManagerClient()
-	ti, err := ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	ti, err := ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
 		t.Fatalf("GetTablet failed: %v", err)
 	}
@@ -560,31 +560,31 @@ func TestRPCTabletExternallyReparentedRerun(t *testing.T) {
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
 		t.Fatalf("TabletExternallyReparented(replica) failed: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedFailedOldMaster: good case", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedFailedOldMain: good case", waitID)
 
-	// check the old master was converted to replica
-	tablet, err := ts.GetTablet(ctx, oldMaster.Tablet.Alias)
+	// check the old main was converted to replica
+	tablet, err := ts.GetTablet(ctx, oldMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", oldMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", oldMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_REPLICA {
-		t.Fatalf("old master should be replica but is: %v", tablet.Type)
+		t.Fatalf("old main should be replica but is: %v", tablet.Type)
 	}
 
-	// run TER again and make sure the master is still correct
+	// run TER again and make sure the main is still correct
 	waitID = makeWaitID()
 	if err := tmc.TabletExternallyReparented(context.Background(), ti.Tablet, waitID); err != nil {
 		t.Fatalf("TabletExternallyReparented(replica) failed: %v", err)
 	}
-	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedFailedOldMaster: good case", waitID)
+	waitForExternalReparent(t, "TestRPCTabletExternallyReparentedFailedOldMain: good case", waitID)
 
-	// check the new master is still master
-	tablet, err = ts.GetTablet(ctx, newMaster.Tablet.Alias)
+	// check the new main is still main
+	tablet, err = ts.GetTablet(ctx, newMain.Tablet.Alias)
 	if err != nil {
-		t.Fatalf("GetTablet(%v) failed: %v", newMaster.Tablet.Alias, err)
+		t.Fatalf("GetTablet(%v) failed: %v", newMain.Tablet.Alias, err)
 	}
 	if tablet.Type != topodatapb.TabletType_MASTER {
-		t.Fatalf("new master should be MASTER but is: %v", tablet.Type)
+		t.Fatalf("new main should be MASTER but is: %v", tablet.Type)
 	}
 
 }
@@ -621,8 +621,8 @@ func init() {
 // generated by makeWaitID().
 //
 // The TabletExternallyReparented RPC returns as soon as the
-// new master is visible in the serving graph. Before checking things like
-// replica endpoints and old master status, we should wait for the finalize
+// new main is visible in the serving graph. Before checking things like
+// replica endpoints and old main status, we should wait for the finalize
 // stage, which happens in the background.
 func waitForExternalReparent(t *testing.T, name, externalID string) {
 	timer := time.NewTimer(10 * time.Second)

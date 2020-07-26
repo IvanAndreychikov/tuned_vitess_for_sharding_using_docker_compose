@@ -38,14 +38,14 @@ func newFilePosFlavor() flavor {
 	return &filePosFlavor{}
 }
 
-// masterGTIDSet is part of the Flavor interface.
-func (flv *filePosFlavor) masterGTIDSet(c *Conn) (GTIDSet, error) {
+// mainGTIDSet is part of the Flavor interface.
+func (flv *filePosFlavor) mainGTIDSet(c *Conn) (GTIDSet, error) {
 	qr, err := c.ExecuteFetch("SHOW MASTER STATUS", 100, true /* wantfields */)
 	if err != nil {
 		return nil, err
 	}
 	if len(qr.Rows) == 0 {
-		return nil, errors.New("no master status")
+		return nil, errors.New("no main status")
 	}
 
 	resultMap, err := resultToMap(qr)
@@ -63,27 +63,27 @@ func (flv *filePosFlavor) masterGTIDSet(c *Conn) (GTIDSet, error) {
 	}, nil
 }
 
-func (flv *filePosFlavor) startSlaveCommand() string {
+func (flv *filePosFlavor) startSubordinateCommand() string {
 	return "unsupported"
 }
 
-func (flv *filePosFlavor) restartSlaveCommands() []string {
+func (flv *filePosFlavor) restartSubordinateCommands() []string {
 	return []string{"unsupported"}
 }
 
-func (flv *filePosFlavor) stopSlaveCommand() string {
+func (flv *filePosFlavor) stopSubordinateCommand() string {
 	return "unsupported"
 }
 
 // sendBinlogDumpCommand is part of the Flavor interface.
-func (flv *filePosFlavor) sendBinlogDumpCommand(c *Conn, slaveID uint32, startPos Position) error {
+func (flv *filePosFlavor) sendBinlogDumpCommand(c *Conn, subordinateID uint32, startPos Position) error {
 	rpos, ok := startPos.GTIDSet.(filePosGTID)
 	if !ok {
 		return fmt.Errorf("startPos.GTIDSet is wrong type - expected filePosGTID, got: %#v", startPos.GTIDSet)
 	}
 
 	flv.file = rpos.file
-	return c.WriteComBinlogDump(slaveID, rpos.file, uint32(rpos.pos), 0)
+	return c.WriteComBinlogDump(subordinateID, rpos.file, uint32(rpos.pos), 0)
 }
 
 // readBinlogEvent is part of the Flavor interface.
@@ -168,43 +168,43 @@ func (flv *filePosFlavor) resetReplicationCommands(c *Conn) []string {
 	}
 }
 
-// setSlavePositionCommands is part of the Flavor interface.
-func (flv *filePosFlavor) setSlavePositionCommands(pos Position) []string {
+// setSubordinatePositionCommands is part of the Flavor interface.
+func (flv *filePosFlavor) setSubordinatePositionCommands(pos Position) []string {
 	return []string{
 		"unsupported",
 	}
 }
 
-// setSlavePositionCommands is part of the Flavor interface.
-func (flv *filePosFlavor) changeMasterArg() string {
+// setSubordinatePositionCommands is part of the Flavor interface.
+func (flv *filePosFlavor) changeMainArg() string {
 	return "unsupported"
 }
 
 // status is part of the Flavor interface.
-func (flv *filePosFlavor) status(c *Conn) (SlaveStatus, error) {
+func (flv *filePosFlavor) status(c *Conn) (SubordinateStatus, error) {
 	qr, err := c.ExecuteFetch("SHOW SLAVE STATUS", 100, true /* wantfields */)
 	if err != nil {
-		return SlaveStatus{}, err
+		return SubordinateStatus{}, err
 	}
 	if len(qr.Rows) == 0 {
 		// The query returned no data, meaning the server
-		// is not configured as a slave.
-		return SlaveStatus{}, ErrNotSlave
+		// is not configured as a subordinate.
+		return SubordinateStatus{}, ErrNotSubordinate
 	}
 
 	resultMap, err := resultToMap(qr)
 	if err != nil {
-		return SlaveStatus{}, err
+		return SubordinateStatus{}, err
 	}
 
-	status := parseSlaveStatus(resultMap)
-	pos, err := strconv.Atoi(resultMap["Exec_Master_Log_Pos"])
+	status := parseSubordinateStatus(resultMap)
+	pos, err := strconv.Atoi(resultMap["Exec_Main_Log_Pos"])
 	if err != nil {
-		return SlaveStatus{}, fmt.Errorf("invalid FilePos GTID (%v): expecting pos to be an integer", resultMap["Exec_Master_Log_Pos"])
+		return SubordinateStatus{}, fmt.Errorf("invalid FilePos GTID (%v): expecting pos to be an integer", resultMap["Exec_Main_Log_Pos"])
 	}
 
 	status.Position.GTIDSet = filePosGTID{
-		file: resultMap["Relay_Master_Log_File"],
+		file: resultMap["Relay_Main_Log_File"],
 		pos:  pos,
 	}
 	return status, nil
@@ -228,7 +228,7 @@ func (flv *filePosFlavor) waitUntilPositionCommand(ctx context.Context, pos Posi
 	return fmt.Sprintf("SELECT MASTER_POS_WAIT('%s', %d)", filePosPos.file, filePosPos.pos), nil
 }
 
-func (*filePosFlavor) startSlaveUntilAfter(pos Position) string {
+func (*filePosFlavor) startSubordinateUntilAfter(pos Position) string {
 	return "unsupported"
 }
 

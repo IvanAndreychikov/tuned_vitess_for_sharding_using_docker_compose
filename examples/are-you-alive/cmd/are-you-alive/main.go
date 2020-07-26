@@ -170,7 +170,7 @@ var (
 	prometheusMetricsAddress = flag.String(
 		"prometheus_metrics_address", ":8080", "Address on which to serve prometheus metrics")
 	debug            = flag.Bool("debug", false, "Enable debug logging")
-	useVtgate        = flag.Bool("vtgate", false, "Using vtgate (for @master and @replica)")
+	useVtgate        = flag.Bool("vtgate", false, "Using vtgate (for @main and @replica)")
 	readFromReplica  = flag.Bool("replica", false, "Read from replica")
 	readFromReadOnly = flag.Bool("rdonly", false, "Read from rdonly")
 	initialize       = flag.Bool("initialize", false, "Initialize database (for testing)")
@@ -235,10 +235,10 @@ func main() {
 	} else if os.Getenv("MYSQL_CONN_STRING") != "" {
 		connectionString = os.Getenv("MYSQL_CONN_STRING")
 	}
-	masterConnectionString := connectionString
+	mainConnectionString := connectionString
 	replicaConnectionString := connectionString
 	rdonlyConnectionString := connectionString
-	// When using vtgate, we want to append @master and @replica to the DSN, but
+	// When using vtgate, we want to append @main and @replica to the DSN, but
 	// this will fail against normal mysql which we're using for testing.  See:
 	// https://vitess.io/docs/user-guides/faq/#how-do-i-choose-between-master-vs-replica-for-queries
 	if *useVtgate {
@@ -249,11 +249,11 @@ func main() {
 		// - https://github.com/go-sql-driver/mysql/blob/master/README.md#interpolateparams
 		// - https://github.com/src-d/go-mysql-server/issues/428
 		// - https://github.com/vitessio/vitess/pull/3862
-		masterConnectionString = fmt.Sprintf("%s@master?interpolateParams=true", connectionString)
+		mainConnectionString = fmt.Sprintf("%s@main?interpolateParams=true", connectionString)
 		replicaConnectionString = fmt.Sprintf("%s@replica?interpolateParams=true", connectionString)
 		rdonlyConnectionString = fmt.Sprintf("%s@rdonly?interpolateParams=true", connectionString)
 	}
-	fmt.Println("masterConnectionString:", masterConnectionString)
+	fmt.Println("mainConnectionString:", mainConnectionString)
 	fmt.Println("replicaConnectionString:", replicaConnectionString)
 	fmt.Println("rdonlyConnectionString:", rdonlyConnectionString)
 
@@ -265,14 +265,14 @@ func main() {
 	logrus.Info("Initializing database")
 	// For local testing, does not initialize vschema
 	if *initialize {
-		client.InitializeDatabase(*environmentName, masterConnectionString, "are_you_alive_messages")
+		client.InitializeDatabase(*environmentName, mainConnectionString, "are_you_alive_messages")
 	}
-	client.WipeTestTable(*environmentName, masterConnectionString, "are_you_alive_messages")
+	client.WipeTestTable(*environmentName, mainConnectionString, "are_you_alive_messages")
 
 	// 3. Start goroutines to do various things
 	logrus.Info("Starting client goroutines")
 	deleter := runner{
-		connString: masterConnectionString,
+		connString: mainConnectionString,
 		envName:    *environmentName,
 		fn:         deleteLastRecordIfNecessary,
 		errMessage: "Recieved error deleting last record",
@@ -280,7 +280,7 @@ func main() {
 	}
 	go deleter.run()
 	writer := runner{
-		connString: masterConnectionString,
+		connString: mainConnectionString,
 		envName:    *environmentName,
 		fn:         writeNextRecord,
 		errMessage: "Recieved error writing next record",
@@ -288,7 +288,7 @@ func main() {
 	}
 	go writer.run()
 	reader := runner{
-		connString: masterConnectionString,
+		connString: mainConnectionString,
 		envName:    *environmentName,
 		fn:         readRandomRecord,
 		errMessage: "Recieved error reading record",
@@ -296,7 +296,7 @@ func main() {
 	}
 	go reader.run()
 	counter := runner{
-		connString: masterConnectionString,
+		connString: mainConnectionString,
 		envName:    *environmentName,
 		fn:         runCount,
 		errMessage: "Recieved error running count",

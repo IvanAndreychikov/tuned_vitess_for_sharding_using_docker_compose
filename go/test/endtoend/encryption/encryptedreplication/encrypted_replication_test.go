@@ -55,13 +55,13 @@ func testReplicationBase(t *testing.T, isClientCertPassed bool) {
 
 	defer teardownCluster()
 
-	masterTablet := *clusterInstance.Keyspaces[0].Shards[0].Vttablets[0]
+	mainTablet := *clusterInstance.Keyspaces[0].Shards[0].Vttablets[0]
 	replicaTablet := *clusterInstance.Keyspaces[0].Shards[0].Vttablets[1]
 
-	err = clusterInstance.VtctlclientProcess.InitTablet(&masterTablet, clusterInstance.Cell, keyspace, hostname, shardName)
+	err = clusterInstance.VtctlclientProcess.InitTablet(&mainTablet, clusterInstance.Cell, keyspace, hostname, shardName)
 	require.Nil(t, err)
 	// create database so vttablet can start behaving normally
-	err = masterTablet.VttabletProcess.CreateDB(keyspace)
+	err = mainTablet.VttabletProcess.CreateDB(keyspace)
 	require.Nil(t, err)
 
 	if isClientCertPassed {
@@ -78,12 +78,12 @@ func testReplicationBase(t *testing.T, isClientCertPassed bool) {
 	require.Nil(t, err)
 
 	// start the tablets
-	for _, tablet := range []cluster.Vttablet{masterTablet, replicaTablet} {
+	for _, tablet := range []cluster.Vttablet{mainTablet, replicaTablet} {
 		_ = tablet.VttabletProcess.Setup()
 	}
 
 	// Reparent using SSL (this will also check replication works)
-	err = clusterInstance.VtctlclientProcess.InitShardMaster(keyspace, shardName, clusterInstance.Cell, masterTablet.TabletUID)
+	err = clusterInstance.VtctlclientProcess.InitShardMain(keyspace, shardName, clusterInstance.Cell, mainTablet.TabletUID)
 	if isClientCertPassed {
 		require.Nil(t, err)
 	} else {

@@ -28,12 +28,12 @@ import (
 
 // shard related methods for Wrangler
 
-// SetShardIsMasterServing changes the IsMasterServing parameter of a shard.
+// SetShardIsMainServing changes the IsMainServing parameter of a shard.
 // It does not rebuild any serving graph or do any consistency check.
 // This is an emergency manual operation.
-func (wr *Wrangler) SetShardIsMasterServing(ctx context.Context, keyspace, shard string, isMasterServing bool) (err error) {
+func (wr *Wrangler) SetShardIsMainServing(ctx context.Context, keyspace, shard string, isMainServing bool) (err error) {
 	// lock the keyspace to not conflict with resharding operations
-	ctx, unlock, lockErr := wr.ts.LockKeyspace(ctx, keyspace, fmt.Sprintf("SetShardIsMasterServing(%v,%v,%v)", keyspace, shard, isMasterServing))
+	ctx, unlock, lockErr := wr.ts.LockKeyspace(ctx, keyspace, fmt.Sprintf("SetShardIsMainServing(%v,%v,%v)", keyspace, shard, isMainServing))
 	if lockErr != nil {
 		return lockErr
 	}
@@ -41,7 +41,7 @@ func (wr *Wrangler) SetShardIsMasterServing(ctx context.Context, keyspace, shard
 
 	// and update the shard
 	_, err = wr.ts.UpdateShardFields(ctx, keyspace, shard, func(si *topo.ShardInfo) error {
-		si.IsMasterServing = isMasterServing
+		si.IsMainServing = isMainServing
 		return nil
 	})
 	return err
@@ -247,9 +247,9 @@ func (wr *Wrangler) RemoveShardCell(ctx context.Context, keyspace, shard, cell s
 		return fmt.Errorf("cell %v in not in shard info", cell)
 	}
 
-	// check the master alias is not in the cell
-	if shardInfo.MasterAlias != nil && shardInfo.MasterAlias.Cell == cell {
-		return fmt.Errorf("master %v is in the cell '%v' we want to remove", topoproto.TabletAliasString(shardInfo.MasterAlias), cell)
+	// check the main alias is not in the cell
+	if shardInfo.MainAlias != nil && shardInfo.MainAlias.Cell == cell {
+		return fmt.Errorf("main %v is in the cell '%v' we want to remove", topoproto.TabletAliasString(shardInfo.MainAlias), cell)
 	}
 
 	// get the ShardReplication object in the cell

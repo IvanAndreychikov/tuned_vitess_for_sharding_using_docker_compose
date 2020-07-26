@@ -56,7 +56,7 @@ func TestBasicVreplicationWorkflow(t *testing.T) {
 	vc.AddKeyspace(t, cell, "product", "0", initialProductVSchema, initialProductSchema, defaultReplicas, defaultRdonly, 100)
 	vtgate = cell.Vtgates[0]
 	assert.NotNil(t, vtgate)
-	vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", "product", "0"), 1)
+	vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", "product", "0"), 1)
 
 	vtgateConn = getConnection(t, globalConfig.vtgateMySQLPort)
 	defer vtgateConn.Close()
@@ -115,10 +115,10 @@ func shardCustomer(t *testing.T, testReverse bool) {
 	if _, err := vc.AddKeyspace(t, cell, "customer", "-80,80-", customerVSchema, customerSchema, defaultReplicas, defaultRdonly, 200); err != nil {
 		t.Fatal(err)
 	}
-	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", "customer", "-80"), 1); err != nil {
+	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", "customer", "-80"), 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", "customer", "80-"), 1); err != nil {
+	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", "customer", "80-"), 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -300,7 +300,7 @@ func reshardMerchant2to3SplitMerge(t *testing.T) {
 			t.Fatalf("GetShard merchant failed for: %s: %v", shard, err)
 		}
 		assert.NotContains(t, output, "node doesn't exist", "GetShard failed for valid shard merchant:"+shard)
-		assert.Contains(t, output, "master_alias", "GetShard failed for valid shard merchant:"+shard)
+		assert.Contains(t, output, "main_alias", "GetShard failed for valid shard merchant:"+shard)
 	}
 
 	for _, shard := range strings.Split("-40,40-c0,c0-", ",") {
@@ -348,14 +348,14 @@ func reshard(t *testing.T, ksName string, tableName string, workflow string, sou
 	arrShardNames := strings.Split(targetShards, ",")
 
 	for _, shardName := range arrShardNames {
-		if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", ksName, shardName), 1); err != nil {
+		if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", ksName, shardName), 1); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := vc.VtctlClient.ExecuteCommand("Reshard", ksWorkflow, sourceShards, targetShards); err != nil {
 		t.Fatalf("Reshard command failed with %+v\n", err)
 	}
-	tablets := vc.getVttabletsInKeyspace(t, cell, ksName, "master")
+	tablets := vc.getVttabletsInKeyspace(t, cell, ksName, "main")
 	targetShards = "," + targetShards + ","
 	for _, tab := range tablets {
 		if strings.Contains(targetShards, ","+tab.Shard+",") {
@@ -440,10 +440,10 @@ func shardMerchant(t *testing.T) {
 	if _, err := vc.AddKeyspace(t, cell, "merchant", "-80,80-", merchantVSchema, "", defaultReplicas, defaultRdonly, 400); err != nil {
 		t.Fatal(err)
 	}
-	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", "merchant", "-80"), 1); err != nil {
+	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", "merchant", "-80"), 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.master", "merchant", "80-"), 1); err != nil {
+	if err := vtgate.WaitForStatusOfTabletInShard(fmt.Sprintf("%s.%s.main", "merchant", "80-"), 1); err != nil {
 		t.Fatal(err)
 	}
 	if err := vc.VtctlClient.ExecuteCommand("MoveTables", "-cell="+cell.Name, "-workflow=p2m",
@@ -509,7 +509,7 @@ func materializeProduct(t *testing.T) {
 	if err := vc.VtctlClient.ExecuteCommand("Materialize", materializeProductSpec); err != nil {
 		t.Fatal(err)
 	}
-	customerTablets := vc.getVttabletsInKeyspace(t, cell, "customer", "master")
+	customerTablets := vc.getVttabletsInKeyspace(t, cell, "customer", "main")
 	for _, tab := range customerTablets {
 		if vc.WaitForVReplicationToCatchup(tab, workflow, "vt_customer", 3*time.Second) != nil {
 			t.Fatal("Materialize timed out")
@@ -543,7 +543,7 @@ func materializeMerchantSales(t *testing.T) {
 		fmt.Printf("Materialize MerchantSales error is %+v", output)
 		t.Fatal(err)
 	}
-	merchantTablets := vc.getVttabletsInKeyspace(t, cell, "merchant", "master")
+	merchantTablets := vc.getVttabletsInKeyspace(t, cell, "merchant", "main")
 	for _, tab := range merchantTablets {
 		if vc.WaitForVReplicationToCatchup(tab, workflow, "vt_merchant", 1*time.Second) != nil {
 			t.Fatal("Materialize timed out")
@@ -564,7 +564,7 @@ func materializeMerchantOrders(t *testing.T) {
 		fmt.Printf("MerchantOrders error is %+v", output)
 		t.Fatal(err)
 	}
-	merchantTablets := vc.getVttabletsInKeyspace(t, cell, "merchant", "master")
+	merchantTablets := vc.getVttabletsInKeyspace(t, cell, "merchant", "main")
 	for _, tab := range merchantTablets {
 		if vc.WaitForVReplicationToCatchup(tab, workflow, "vt_merchant", 1*time.Second) != nil {
 			t.Fatal("Materialize timed out")

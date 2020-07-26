@@ -104,8 +104,8 @@ func ParseDBName(connectionString string) string {
 // See https://vitess.io/docs/faq/queries/ for where these come from.
 func ParseTabletType(connectionString string) string {
 	databaseName := ParseDBName(connectionString)
-	if strings.HasSuffix(databaseName, "@master") {
-		return "master"
+	if strings.HasSuffix(databaseName, "@main") {
+		return "main"
 	} else if strings.HasSuffix(databaseName, "@replica") {
 		return "replica"
 	} else if strings.HasSuffix(databaseName, "@rdonly") {

@@ -41,31 +41,31 @@ type MysqlDaemon interface {
 	GetMysqlPort() (int32, error)
 
 	// replication related methods
-	StartSlave(hookExtraEnv map[string]string) error
-	RestartSlave(hookExtraEnv map[string]string) error
-	StartSlaveUntilAfter(ctx context.Context, pos mysql.Position) error
-	StopSlave(hookExtraEnv map[string]string) error
-	SlaveStatus() (mysql.SlaveStatus, error)
-	SetSemiSyncEnabled(master, slave bool) error
-	SemiSyncEnabled() (master, slave bool)
-	SemiSyncSlaveStatus() (bool, error)
+	StartSubordinate(hookExtraEnv map[string]string) error
+	RestartSubordinate(hookExtraEnv map[string]string) error
+	StartSubordinateUntilAfter(ctx context.Context, pos mysql.Position) error
+	StopSubordinate(hookExtraEnv map[string]string) error
+	SubordinateStatus() (mysql.SubordinateStatus, error)
+	SetSemiSyncEnabled(main, subordinate bool) error
+	SemiSyncEnabled() (main, subordinate bool)
+	SemiSyncSubordinateStatus() (bool, error)
 
 	// reparenting related methods
 	ResetReplication(ctx context.Context) error
-	MasterPosition() (mysql.Position, error)
+	MainPosition() (mysql.Position, error)
 	IsReadOnly() (bool, error)
 	SetReadOnly(on bool) error
 	SetSuperReadOnly(on bool) error
-	SetSlavePosition(ctx context.Context, pos mysql.Position) error
-	SetMaster(ctx context.Context, masterHost string, masterPort int, slaveStopBefore bool, slaveStartAfter bool) error
+	SetSubordinatePosition(ctx context.Context, pos mysql.Position) error
+	SetMain(ctx context.Context, mainHost string, mainPort int, subordinateStopBefore bool, subordinateStartAfter bool) error
 	WaitForReparentJournal(ctx context.Context, timeCreatedNS int64) error
 
-	// Deprecated: use MasterPosition() instead
-	DemoteMaster() (mysql.Position, error)
+	// Deprecated: use MainPosition() instead
+	DemoteMain() (mysql.Position, error)
 
-	WaitMasterPos(context.Context, mysql.Position) error
+	WaitMainPos(context.Context, mysql.Position) error
 
-	// Promote makes the current server master. It will not change
+	// Promote makes the current server main. It will not change
 	// the read_only state of the server.
 	Promote(map[string]string) (mysql.Position, error)
 	// Schema related methods

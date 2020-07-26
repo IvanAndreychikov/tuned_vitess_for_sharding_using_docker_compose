@@ -307,7 +307,7 @@ func TestPlanUpdateNormalize(t *testing.T) {
 	sbc1.Queries = nil
 
 	// Force the query to go to the "wrong" shard and ensure that normalization still happens
-	masterSession.TargetString = "TestExecutor/40-60"
+	mainSession.TargetString = "TestExecutor/40-60"
 	_, err = executorExec(executor, "/* leading */ update user set a=2 where id = 1 /* trailing */", nil)
 	require.NoError(t, err)
 	wantQueries = []*querypb.BoundQuery{{
@@ -320,7 +320,7 @@ func TestPlanUpdateNormalize(t *testing.T) {
 	assert.Empty(t, sbc1.Queries)
 	utils.MustMatch(t, sbc2.Queries, wantQueries, "didn't get expected queries")
 	sbc2.Queries = nil
-	masterSession.TargetString = ""
+	mainSession.TargetString = ""
 }
 
 func TestPlanDeleteEqual(t *testing.T) {
@@ -1043,7 +1043,7 @@ func TestPlanInsertAutoincSharded(t *testing.T) {
 	if !result.Equal(wantResult) {
 		t.Errorf("result: %+v, want %+v", result, wantResult)
 	}
-	assert.Equal(t, masterSession.LastInsertId, uint64(2))
+	assert.Equal(t, mainSession.LastInsertId, uint64(2))
 }
 
 func TestPlanInsertGeneratorUnsharded(t *testing.T) {
@@ -1585,7 +1585,7 @@ func TestPlanKeyDestRangeQuery(t *testing.T) {
 		t.Run(tc.targetString+" - "+tc.inputQuery, func(t *testing.T) {
 			executor, sbc1, sbc2, _ := createExecutorEnvUsing(planAllTheThings)
 
-			masterSession.TargetString = tc.targetString
+			mainSession.TargetString = tc.targetString
 			_, err := executorExec(executor, tc.inputQuery, nil)
 			require.NoError(t, err)
 
@@ -1605,12 +1605,12 @@ func TestPlanKeyDestRangeQuery(t *testing.T) {
 
 	// it does not work for inserts
 	executor, _, _, _ := createExecutorEnvUsing(planAllTheThings)
-	masterSession.TargetString = "TestExecutor[-]"
+	mainSession.TargetString = "TestExecutor[-]"
 	_, err := executorExec(executor, insertInput, nil)
 
 	require.EqualError(t, err, "range queries not supported for inserts: TestExecutor[-]")
 
-	masterSession.TargetString = ""
+	mainSession.TargetString = ""
 }
 
 func assertQueriesContain(t *testing.T, sql, sbcName string, sbc *sandboxconn.SandboxConn) {
@@ -1697,7 +1697,7 @@ func TestPlanUpdateLastInsertID(t *testing.T) {
 	executor.normalize = true
 
 	sql := "update user set a = last_insert_id() where id = 1"
-	masterSession.LastInsertId = 43
+	mainSession.LastInsertId = 43
 	_, err := executorExec(executor, sql, map[string]*querypb.BindVariable{})
 	require.NoError(t, err)
 	wantQueries := []*querypb.BoundQuery{{

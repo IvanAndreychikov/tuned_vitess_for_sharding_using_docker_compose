@@ -36,7 +36,7 @@ const (
 	Enable      = "enable"
 	Disable     = "disable"
 	Dryrun      = "dryRun"
-	NotOnMaster = "notOnMaster"
+	NotOnMain = "notOnMain"
 )
 
 var (
@@ -131,7 +131,7 @@ func init() {
 	flag.BoolVar(&currentConfig.TransactionLimitByComponent, "transaction_limit_by_component", defaultConfig.TransactionLimitByComponent, "Include CallerID.component when considering who the user is for the purpose of transaction limit.")
 	flag.BoolVar(&currentConfig.TransactionLimitBySubcomponent, "transaction_limit_by_subcomponent", defaultConfig.TransactionLimitBySubcomponent, "Include CallerID.subcomponent when considering who the user is for the purpose of transaction limit.")
 
-	flag.BoolVar(&enableHeartbeat, "heartbeat_enable", false, "If true, vttablet records (if master) or checks (if replica) the current time of a replication heartbeat in the table _vt.heartbeat. The result is used to inform the serving state of the vttablet via healthchecks.")
+	flag.BoolVar(&enableHeartbeat, "heartbeat_enable", false, "If true, vttablet records (if main) or checks (if replica) the current time of a replication heartbeat in the table _vt.heartbeat. The result is used to inform the serving state of the vttablet via healthchecks.")
 	flag.DurationVar(&heartbeatInterval, "heartbeat_interval", 1*time.Second, "How frequently to read and write replication heartbeat.")
 
 	flag.BoolVar(&currentConfig.EnforceStrictTransTables, "enforce_strict_trans_tables", defaultConfig.EnforceStrictTransTables, "If true, vttablet requires MySQL to run with STRICT_TRANS_TABLES or STRICT_ALL_TABLES on. It is recommended to not turn this flag off. Otherwise MySQL may alter your supplied values before saving them to the database.")
@@ -159,7 +159,7 @@ func Init() {
 
 	switch {
 	case enableConsolidatorReplicas:
-		currentConfig.Consolidator = NotOnMaster
+		currentConfig.Consolidator = NotOnMain
 	case enableConsolidator:
 		currentConfig.Consolidator = Enable
 	default:

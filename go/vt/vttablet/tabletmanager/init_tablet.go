@@ -70,8 +70,8 @@ func (agent *ActionAgent) InitTablet(port, gRPCPort int32) error {
 	}
 	if tabletType == topodatapb.TabletType_MASTER {
 		// We disallow MASTER, so we don't have to change
-		// shard.MasterAlias, and deal with the corner cases.
-		return fmt.Errorf("init_tablet_type cannot be master, use replica instead")
+		// shard.MainAlias, and deal with the corner cases.
+		return fmt.Errorf("init_tablet_type cannot be main, use replica instead")
 	}
 
 	// parse and validate shard name
@@ -96,32 +96,32 @@ func (agent *ActionAgent) InitTablet(port, gRPCPort int32) error {
 	}); err != nil {
 		return vterrors.Wrap(err, "InitTablet cannot GetOrCreateShard shard")
 	}
-	if si.MasterAlias != nil && topoproto.TabletAliasEqual(si.MasterAlias, agent.TabletAlias) {
-		// We're marked as master in the shard record, which could mean the master
+	if si.MainAlias != nil && topoproto.TabletAliasEqual(si.MainAlias, agent.TabletAlias) {
+		// We're marked as main in the shard record, which could mean the main
 		// tablet process was just restarted. However, we need to check if a new
-		// master is in the process of taking over. In that case, it will let us
-		// know by forcibly updating the old master's tablet record.
+		// main is in the process of taking over. In that case, it will let us
+		// know by forcibly updating the old main's tablet record.
 		oldTablet, err := agent.TopoServer.GetTablet(ctx, agent.TabletAlias)
 		switch {
 		case topo.IsErrType(err, topo.NoNode):
 			// There's no existing tablet record, so we can assume
 			// no one has left us a message to step down.
 			tabletType = topodatapb.TabletType_MASTER
-			// Update the master term start time (current value is 0) because we
+			// Update the main term start time (current value is 0) because we
 			// assume that we are actually the MASTER and in case of a tiebreak,
 			// vtgate should prefer us.
-			agent.setMasterTermStartTime(time.Now())
+			agent.setMainTermStartTime(time.Now())
 		case err == nil:
 			if oldTablet.Type == topodatapb.TabletType_MASTER {
-				// We're marked as master in the shard record,
+				// We're marked as main in the shard record,
 				// and our existing tablet record agrees.
 				tabletType = topodatapb.TabletType_MASTER
-				// Read the master term start time from tablet.
+				// Read the main term start time from tablet.
 				// If it is nil, it might mean that we are upgrading, so use current time instead
-				if oldTablet.MasterTermStartTime != nil {
-					agent.setMasterTermStartTime(oldTablet.GetMasterTermStartTime())
+				if oldTablet.MainTermStartTime != nil {
+					agent.setMainTermStartTime(oldTablet.GetMainTermStartTime())
 				} else {
-					agent.setMasterTermStartTime(time.Now())
+					agent.setMainTermStartTime(time.Now())
 				}
 			}
 		default:
@@ -134,14 +134,14 @@ func (agent *ActionAgent) InitTablet(port, gRPCPort int32) error {
 			// There's no existing tablet record, so there is nothing to do
 		case err == nil:
 			if oldTablet.Type == topodatapb.TabletType_MASTER {
-				// Our existing tablet type is master, but the shard record does not agree.
-				// Only take over if our master_term_start_time is after what is in the shard record
-				oldMasterTermStartTime := oldTablet.GetMasterTermStartTime()
-				currentShardTime := si.GetMasterTermStartTime()
-				if oldMasterTermStartTime.After(currentShardTime) {
+				// Our existing tablet type is main, but the shard record does not agree.
+				// Only take over if our main_term_start_time is after what is in the shard record
+				oldMainTermStartTime := oldTablet.GetMainTermStartTime()
+				currentShardTime := si.GetMainTermStartTime()
+				if oldMainTermStartTime.After(currentShardTime) {
 					tabletType = topodatapb.TabletType_MASTER
-					// read the master term start time from tablet
-					agent.setMasterTermStartTime(oldMasterTermStartTime)
+					// read the main term start time from tablet
+					agent.setMainTermStartTime(oldMainTermStartTime)
 				}
 			}
 		default:
@@ -200,8 +200,8 @@ func (agent *ActionAgent) InitTablet(port, gRPCPort int32) error {
 		DbNameOverride: *initDbNameOverride,
 		Tags:           initTags,
 	}
-	if !agent.masterTermStartTime().IsZero() {
-		tablet.MasterTermStartTime = logutil.TimeToProto(agent.masterTermStartTime())
+	if !agent.mainTermStartTime().IsZero() {
+		tablet.MainTermStartTime = logutil.TimeToProto(agent.mainTermStartTime())
 	}
 	if port != 0 {
 		tablet.PortMap["vt"] = port

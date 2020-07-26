@@ -118,7 +118,7 @@ func init() {
 	flag.StringVar(&topo.shards, "num_shards", "2",
 		"Comma separated shard count (one per keyspace)")
 	flag.IntVar(&topo.replicas, "replica_count", 2,
-		"Replica tablets per shard (includes master)")
+		"Replica tablets per shard (includes main)")
 	flag.IntVar(&topo.rdonly, "rdonly_count", 1,
 		"Rdonly tablets per shard")
 

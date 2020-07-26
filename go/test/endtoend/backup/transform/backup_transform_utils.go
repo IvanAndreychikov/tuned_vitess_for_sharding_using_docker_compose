@@ -36,7 +36,7 @@ import (
 
 // test main part of the testcase
 var (
-	master           *cluster.Vttablet
+	main           *cluster.Vttablet
 	replica1         *cluster.Vttablet
 	replica2         *cluster.Vttablet
 	localCluster     *cluster.LocalProcessCluster
@@ -96,7 +96,7 @@ func TestMainSetup(m *testing.M, useMysqlctld bool) {
 		extraArgs := []string{"-db-credentials-file", dbCredentialFile}
 		commonTabletArg = append(commonTabletArg, "-db-credentials-file", dbCredentialFile)
 
-		// start mysql process for all replicas and master
+		// start mysql process for all replicas and main
 		var mysqlProcs []*exec.Cmd
 		for i := 0; i < 3; i++ {
 			tabletType := "replica"
@@ -139,18 +139,18 @@ func TestMainSetup(m *testing.M, useMysqlctld bool) {
 		}
 
 		// initialize tablets
-		master = shard.Vttablets[0]
+		main = shard.Vttablets[0]
 		replica1 = shard.Vttablets[1]
 		replica2 = shard.Vttablets[2]
 
-		for _, tablet := range []*cluster.Vttablet{master, replica1} {
+		for _, tablet := range []*cluster.Vttablet{main, replica1} {
 			if err := localCluster.VtctlclientProcess.InitTablet(tablet, cell, keyspaceName, hostname, shard.Name); err != nil {
 				return 1, err
 			}
 		}
 
-		// create database for master and replica
-		for _, tablet := range []cluster.Vttablet{*master, *replica1} {
+		// create database for main and replica
+		for _, tablet := range []cluster.Vttablet{*main, *replica1} {
 			if err := tablet.VttabletProcess.CreateDB(keyspaceName); err != nil {
 				return 1, err
 			}
@@ -159,8 +159,8 @@ func TestMainSetup(m *testing.M, useMysqlctld bool) {
 			}
 		}
 
-		// initialize master and start replication
-		if err := localCluster.VtctlclientProcess.InitShardMaster(keyspaceName, shard.Name, cell, master.TabletUID); err != nil {
+		// initialize main and start replication
+		if err := localCluster.VtctlclientProcess.InitShardMain(keyspaceName, shard.Name, cell, main.TabletUID); err != nil {
 			return 1, err
 		}
 		return m.Run(), nil
@@ -183,7 +183,7 @@ var vtInsertTest = `create table vt_insert_test (
 	) Engine=InnoDB`
 
 func TestBackupTransformImpl(t *testing.T) {
-	// insert data in master, validate same in slave
+	// insert data in main, validate same in subordinate
 	defer cluster.PanicHandler(t)
 	verifyInitialReplication(t)
 
@@ -204,8 +204,8 @@ func TestBackupTransformImpl(t *testing.T) {
 	err = localCluster.VtctlclientProcess.ExecuteCommand("Backup", replica1.Alias)
 	require.Nil(t, err)
 
-	// insert data in master
-	_, err = master.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test2')", keyspaceName, true)
+	// insert data in main
+	_, err = main.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test2')", keyspaceName, true)
 	require.Nil(t, err)
 
 	// validate backup_list, expecting 1 backup available
@@ -258,7 +258,7 @@ func TestBackupTransformImpl(t *testing.T) {
 		verifyReplicationStatus(t, replica2, "OFF")
 	}
 
-	// validate that new slave has all the data
+	// validate that new subordinate has all the data
 	cluster.VerifyRowsInTablet(t, replica2, keyspaceName, 2)
 
 	// Remove all backups
@@ -333,19 +333,19 @@ func validateManifestFile(t *testing.T, backupLocation string) {
 
 // verifyReplicationStatus validates the replication status in tablet.
 func verifyReplicationStatus(t *testing.T, vttablet *cluster.Vttablet, expectedStatus string) {
-	status, err := vttablet.VttabletProcess.GetDBVar("rpl_semi_sync_slave_enabled", keyspaceName)
+	status, err := vttablet.VttabletProcess.GetDBVar("rpl_semi_sync_subordinate_enabled", keyspaceName)
 	require.Nil(t, err)
 	assert.Equal(t, expectedStatus, status)
-	status, err = vttablet.VttabletProcess.GetDBStatus("rpl_semi_sync_slave_status", keyspaceName)
+	status, err = vttablet.VttabletProcess.GetDBStatus("rpl_semi_sync_subordinate_status", keyspaceName)
 	require.Nil(t, err)
 	assert.Equal(t, expectedStatus, status)
 }
 
-// verifyInitialReplication creates schema in master, insert some data to master and verify the same data in replica
+// verifyInitialReplication creates schema in main, insert some data to main and verify the same data in replica
 func verifyInitialReplication(t *testing.T) {
-	_, err := master.VttabletProcess.QueryTablet(vtInsertTest, keyspaceName, true)
+	_, err := main.VttabletProcess.QueryTablet(vtInsertTest, keyspaceName, true)
 	require.Nil(t, err)
-	_, err = master.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test1')", keyspaceName, true)
+	_, err = main.VttabletProcess.QueryTablet("insert into vt_insert_test (msg) values ('test1')", keyspaceName, true)
 	require.Nil(t, err)
 	cluster.VerifyRowsInTablet(t, replica1, keyspaceName, 1)
 }

@@ -63,11 +63,11 @@ func (tablet *Vttablet) ValidateTabletRestart(t *testing.T) {
 	require.Nilf(t, tablet.Restart(), "tablet restart failed")
 }
 
-// GetMasterPosition gets the master position of required vttablet
-func GetMasterPosition(t *testing.T, vttablet Vttablet, hostname string) (string, string) {
+// GetMainPosition gets the main position of required vttablet
+func GetMainPosition(t *testing.T, vttablet Vttablet, hostname string) (string, string) {
 	ctx := context.Background()
 	vtablet := getTablet(vttablet.GrpcPort, hostname)
-	pos, err := tmClient.MasterPosition(ctx, vtablet)
+	pos, err := tmClient.MainPosition(ctx, vtablet)
 	require.Nil(t, err)
 	gtID := strings.SplitAfter(pos, "/")[1]
 	return pos, gtID
@@ -178,9 +178,9 @@ func filterResultWhenRunsForCoverage(input string) string {
 
 // WaitForReplicationPos will wait for replication position to catch-up
 func WaitForReplicationPos(t *testing.T, tabletA *Vttablet, tabletB *Vttablet, hostname string, timeout float64) {
-	replicationPosA, _ := GetMasterPosition(t, *tabletA, hostname)
+	replicationPosA, _ := GetMainPosition(t, *tabletA, hostname)
 	for {
-		replicationPosB, _ := GetMasterPosition(t, *tabletB, hostname)
+		replicationPosB, _ := GetMainPosition(t, *tabletB, hostname)
 		if positionAtLeast(t, tabletA, replicationPosB, replicationPosA) {
 			break
 		}

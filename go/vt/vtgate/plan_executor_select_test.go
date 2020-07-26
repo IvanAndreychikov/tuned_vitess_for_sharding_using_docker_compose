@@ -180,7 +180,7 @@ func TestPlanStreamBuffering(t *testing.T) {
 	err := executor.StreamExecute(
 		context.Background(),
 		"TestStreamBuffering",
-		NewSafeSession(masterSession),
+		NewSafeSession(mainSession),
 		"select id from music_user_map where id = 1",
 		nil,
 		querypb.Target{
@@ -222,7 +222,7 @@ func TestPlanStreamBuffering(t *testing.T) {
 }
 
 func TestPlanSelectLastInsertId(t *testing.T) {
-	masterSession.LastInsertId = 52
+	mainSession.LastInsertId = 52
 	executor, _, _, _ := createExecutorEnvUsing(planAllTheThings)
 	executor.normalize = true
 	logChan := QueryLogger.Subscribe("Test")
@@ -250,7 +250,7 @@ func TestPlanSelectUserDefindVariable(t *testing.T) {
 	defer QueryLogger.Unsubscribe(logChan)
 
 	sql := "select @foo"
-	masterSession = &vtgatepb.Session{UserDefinedVariables: createMap([]string{"foo"}, []interface{}{"bar"})}
+	mainSession = &vtgatepb.Session{UserDefinedVariables: createMap([]string{"foo"}, []interface{}{"bar"})}
 	result, err := executorExec(executor, sql, map[string]*querypb.BindVariable{})
 	require.NoError(t, err)
 	wantResult := &sqltypes.Result{
@@ -377,9 +377,9 @@ func TestPlanSelectDatabase(t *testing.T) {
 	executor, _, _, _ := createExecutorEnvUsing(planAllTheThings)
 	executor.normalize = true
 	sql := "select database()"
-	newSession := *masterSession
+	newSession := *mainSession
 	session := NewSafeSession(&newSession)
-	session.TargetString = "TestExecutor@master"
+	session.TargetString = "TestExecutor@main"
 	result, err := executor.Execute(
 		context.Background(),
 		"TestExecute",
@@ -391,7 +391,7 @@ func TestPlanSelectDatabase(t *testing.T) {
 			{Name: "database()", Type: sqltypes.VarBinary},
 		},
 		Rows: [][]sqltypes.Value{{
-			sqltypes.NewVarBinary("TestExecutor@master"),
+			sqltypes.NewVarBinary("TestExecutor@main"),
 		}},
 	}
 	require.NoError(t, err)
@@ -642,7 +642,7 @@ func TestPlanSelectNormalize(t *testing.T) {
 	sbc1.Queries = nil
 
 	// Force the query to go to the "wrong" shard and ensure that normalization still happens
-	masterSession.TargetString = "TestExecutor/40-60"
+	mainSession.TargetString = "TestExecutor/40-60"
 	_, err = executorExec(executor, "/* leading */ select id from user where id = 1 /* trailing */", nil)
 	require.NoError(t, err)
 	wantQueries = []*querypb.BoundQuery{{
@@ -658,7 +658,7 @@ func TestPlanSelectNormalize(t *testing.T) {
 		t.Errorf("sbc2.Queries: %+v, want %+v\n", sbc2.Queries, wantQueries)
 	}
 	sbc2.Queries = nil
-	masterSession.TargetString = ""
+	mainSession.TargetString = ""
 }
 
 func TestPlanSelectCaseSensitivity(t *testing.T) {
@@ -924,7 +924,7 @@ func TestPlanSelectScatterPartial(t *testing.T) {
 	// Fail 1 of N without the directive fails the whole operation
 	conns[2].MustFailCodes[vtrpcpb.Code_RESOURCE_EXHAUSTED] = 1000
 	results, err := executorExec(executor, "select id from user", nil)
-	wantErr := "TestExecutor.40-60.master, used tablet: aa-0 (40-60)"
+	wantErr := "TestExecutor.40-60.main, used tablet: aa-0 (40-60)"
 	if err == nil || !strings.Contains(err.Error(), wantErr) {
 		t.Errorf("want error %v, got %v", wantErr, err)
 	}

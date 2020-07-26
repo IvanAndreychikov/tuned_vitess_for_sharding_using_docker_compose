@@ -31,7 +31,7 @@ import (
 
 var (
 	clusterInstance *cluster.LocalProcessCluster
-	masterTablet    cluster.Vttablet
+	mainTablet    cluster.Vttablet
 	replicaTablet   cluster.Vttablet
 	hostname        = "localhost"
 	keyspaceName    = "test_keyspace"
@@ -62,8 +62,8 @@ func TestMain(m *testing.M) {
 		// Collect tablet paths and ports
 		tablets := clusterInstance.Keyspaces[0].Shards[0].Vttablets
 		for _, tablet := range tablets {
-			if tablet.Type == "master" {
-				masterTablet = *tablet
+			if tablet.Type == "main" {
+				mainTablet = *tablet
 			} else if tablet.Type != "rdonly" {
 				replicaTablet = *tablet
 			}
@@ -93,8 +93,8 @@ func initCluster(shardNames []string, totalTabletsRequired int) {
 				MySQLPort: clusterInstance.GetAndReservePort(),
 				Alias:     fmt.Sprintf("%s-%010d", clusterInstance.Cell, tabletUID),
 			}
-			if i == 0 { // Make the first one as master
-				tablet.Type = "master"
+			if i == 0 { // Make the first one as main
+				tablet.Type = "main"
 			}
 			// Start Mysqlctl process
 			tablet.MysqlctlProcess = *cluster.MysqlCtlProcessInstance(tablet.TabletUID, tablet.MySQLPort, clusterInstance.TmpDirectory)
@@ -142,10 +142,10 @@ func initCluster(shardNames []string, totalTabletsRequired int) {
 
 func TestRestart(t *testing.T) {
 	defer cluster.PanicHandler(t)
-	err := masterTablet.MysqlctlProcess.Stop()
+	err := mainTablet.MysqlctlProcess.Stop()
 	require.Nil(t, err)
-	masterTablet.MysqlctlProcess.CleanupFiles(masterTablet.TabletUID)
-	err = masterTablet.MysqlctlProcess.Start()
+	mainTablet.MysqlctlProcess.CleanupFiles(mainTablet.TabletUID)
+	err = mainTablet.MysqlctlProcess.Start()
 	require.Nil(t, err)
 }
 
@@ -162,7 +162,7 @@ func TestAutoDetect(t *testing.T) {
 	require.Nil(t, err, "error should be nil")
 
 	// Reparent tablets, which requires flavor detection
-	err = clusterInstance.VtctlclientProcess.InitShardMaster(keyspaceName, shardName, cell, masterTablet.TabletUID)
+	err = clusterInstance.VtctlclientProcess.InitShardMain(keyspaceName, shardName, cell, mainTablet.TabletUID)
 	require.Nil(t, err, "error should be nil")
 
 	//Reset flavor

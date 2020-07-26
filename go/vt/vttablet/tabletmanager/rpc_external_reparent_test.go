@@ -29,17 +29,17 @@ func TestTabletExternallyReparentedAlwaysUpdatesTimestamp(t *testing.T) {
 	if err := agent.TabletExternallyReparented(ctx, "unused_id"); err != nil {
 		t.Fatal(err)
 	}
-	if agent._masterTermStartTime.IsZero() {
-		t.Fatalf("master_term_start_time should have been updated")
+	if agent._mainTermStartTime.IsZero() {
+		t.Fatalf("main_term_start_time should have been updated")
 	}
 
 	// Run RPC again and verify that the timestamp was updated.
-	ter1 := agent._masterTermStartTime
+	ter1 := agent._mainTermStartTime
 	if err := agent.TabletExternallyReparented(ctx, "unused_id"); err != nil {
 		t.Fatal(err)
 	}
-	ter2 := agent._masterTermStartTime
+	ter2 := agent._mainTermStartTime
 	if ter1 == ter2 {
-		t.Fatalf("subsequent TER call did not update the master_term_start_time: %v = %v", ter1, ter2)
+		t.Fatalf("subsequent TER call did not update the main_term_start_time: %v = %v", ter1, ter2)
 	}
 }
